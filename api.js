@@ -3,6 +3,7 @@ const db = require('ocore/db.js');
 const express = require('express')
 const cors = require('cors');
 const mutex = require('ocore/mutex.js');
+const addZero = require('./helpers/addZero');
 
 const assocTickersByAssets = {};
 const assocTickersByMarketNames = {};
@@ -107,7 +108,7 @@ async function refreshMarket(base, quote){
 	} else 
 		console.log("symbol missing");
 	bRefreshing = false;
-	unlock();
+	if (unlock) unlock();
 }
 
 async function refreshAsset(asset){
@@ -287,6 +288,41 @@ async function makeCandleForPair(table_name, start_timestamp, end_timestamp, bas
 	VALUES (?,?,?,?,?,?,?,?,?)",[ base, quote, quote_volume, base_volume, high, low, open_price, close_price,start_timestamp]);
 }
 
+async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time) {
+	start_time.setUTCHours(0, 0, 0);
+	const start = start_time.getUTCFullYear() + '-' + addZero(start_time.getUTCMonth() +1) + '-' + addZero(start_time.getUTCDate())+' 00:00:00';
+	const end = end_time.getUTCFullYear() + '-' + addZero(end_time.getUTCMonth() +1) + '-' + addZero(end_time.getUTCDate())+' 23:59:59';
+	const rows = await db.query("SELECT * FROM oswap_aas_balances WHERE address = ? \n\
+		AND creation_date >= ? AND creation_date <= ?", [address, start, end]);
+	const assocDateToBalances = {};
+	rows.forEach(row => {
+		if(!assocDateToBalances[row.creation_date]) {
+			assocDateToBalances[row.creation_date] = {
+				creation_date: row.creation_date
+			}
+		}
+		if(row.asset === null) row.asset = 'GBYTE';
+		assocDateToBalances[row.creation_date][row.asset] = row.balance;
+	})
+
+	const todayRows = await db.query(
+		"SELECT address, asset, SUM(amount) AS balance \n\
+		FROM outputs JOIN units USING(unit) \n\
+		WHERE is_spent=0 AND is_stable=1 AND address=? AND sequence='good' \n\
+		GROUP BY address, asset", [address]);
+	const date = new Date();
+	const key = date.getUTCFullYear() + '-' + addZero(date.getUTCMonth() + 1) + '-' + addZero(date.getUTCDate()) + ' 23:59:59'
+	assocDateToBalances[key] = {creation_date: key};
+	todayRows.forEach(row => {
+		if(row.asset === null) row.asset = 'GBYTE';
+		assocDateToBalances[key][row.asset] = row.balance;
+	})
+
+	return Object.values(assocDateToBalances).sort((a, b) => {
+		return new Date(a.creation_date).getTime() - new Date(b.creation_date).getTime()
+	});
+}
+
 
 async function start(){
 	
@@ -362,6 +398,20 @@ async function start(){
 		}
 		else
 			return response.status(400).send('Unknown market');
+	});
+
+	app.get('/api/v1/balances/:address', async function (request, response) {
+		const address = request.params.address;
+		const start_time = parseDateTime(request.query.start);
+		const end_time = parseDateTime(request.query.end);
+
+		if (!start_time)
+			return response.status(400).send('start_time not valid');
+		if (!end_time)
+			return response.status(400).send('end_time not valid');
+
+		
+		response.send(await calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time));
 	});
 
 	server.listen(conf.apiPort, () => {

@@ -8,6 +8,8 @@ const objectHash = require('ocore/object_hash.js');
 const sqlite_tables = require('./sqlite_tables.js');
 const db = require('ocore/db.js');
 const api = require('./api.js');
+const dump = require('./dumpFunction');
+const addZero = require('./helpers/addZero');
 
 lightWallet.setLightVendorHost(conf.hub);
 
@@ -171,8 +173,27 @@ async function start(){
 	eventBus.on('connected', addWatchedAas);
 	lightWallet.refreshLightClientHistory();
 	api.start();
+	initPriceDumpService()
 }
 
+function initPriceDumpService() {
+	const nowDate = new Date();
+	const nextDate = new Date();
+	nextDate.setUTCHours(0, 1, 0);
+	nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+	const time = nextDate.getTime() - nowDate.getTime();
+	setTimeout(startDump, time)
+}
+
+async function startDump() {
+	let oswapAAs = await db.query("SELECT address FROM oswap_aas");
+	oswapAAs = oswapAAs.map(row => row.address);
+	const d = new Date();
+	d.setUTCDate(d.getUTCDate() - 1);
+	const date = d.getUTCFullYear() + '-' + addZero(d.getUTCMonth() + 1) + '-' + addZero(d.getUTCDate()) + ' 23:59:59'
+	await dump(date, oswapAAs);
+	initPriceDumpService();
+}
 
 function discoverOswapAas(){
 	return new Promise((resolve)=>{

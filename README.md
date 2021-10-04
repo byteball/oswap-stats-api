@@ -150,3 +150,37 @@ Return an array of candlesticks for a time windows.
     "start_timestamp": "2020-09-30T00:00:00.000Z"
 }]
 ```
+-------------------------
+- */api/v1/balances/\<address\>?start=\<start\>&end=\<end\>*
+
+Return an array of candlesticks for a time windows.
+
+- **start**: ISO8601 date (`2020-09-25`)
+- **end**: ISO8601 date (`2020-09-25`)
+
+```json
+[
+  {
+    "creation_date":"2021-08-03 23:59:59",
+    "GBYTE":1892256,
+    "/hYmnT8qDvPhKVQCbMLibB47qMu1DnKf0BKzYWe836c=":108580231,
+    "0IwAk71D5xFP0vTzwamKBwzad3I1ZUjZ1gdeB5OnfOg=":431304893,
+    "CuxoPhgLv9LW7VEPZbRXN7mQjiReuNhuT7S2xem1xTc=":881326092
+  },
+  {
+    "creation_date":"2021-08-04 23:59:59",
+    "GBYTE":1892256,
+    "/hYmnT8qDvPhKVQCbMLibB47qMu1DnKf0BKzYWe836c=":108580231,
+    "0IwAk71D5xFP0vTzwamKBwzad3I1ZUjZ1gdeB5OnfOg=":431304893,
+    "CuxoPhgLv9LW7VEPZbRXN7mQjiReuNhuT7S2xem1xTc=":881326092
+  },
+  {
+    "creation_date":"2021-08-05 23:59:59",
+    "GBYTE":1892256,
+    "/hYmnT8qDvPhKVQCbMLibB47qMu1DnKf0BKzYWe836c=":108580231,
+    "0IwAk71D5xFP0vTzwamKBwzad3I1ZUjZ1gdeB5OnfOg=":431304893,
+    "CuxoPhgLv9LW7VEPZbRXN7mQjiReuNhuT7S2xem1xTc=":881326092
+  }
+]
+```
+
