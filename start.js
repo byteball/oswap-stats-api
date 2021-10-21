@@ -265,13 +265,14 @@ async function saveOswapAa(objAa){
 		const oswapAaAddress = objAa.address;
 		const asset0 = objAa.definition[1].params.asset0;
 		const asset1 = objAa.definition[1].params.asset1;
+		const fee = objAa.definition[1].params.swap_fee;
 
 		const factoryAaVars = await getStateVarsForPrefix(conf.factory_aa, 'pools.' + oswapAaAddress + '.asset');
 		const asset = factoryAaVars['pools.' + oswapAaAddress + '.asset'];
 
 		if (!asset)
 			return setTimeout(function(){ saveOswapAa(objAa).then(resolve) }, 1000);
-		await db.query("INSERT " + db.getIgnore() + " INTO oswap_aas (address, asset_0, asset_1, swap_asset) VALUES (?,?,?,?)", [oswapAaAddress, asset0, asset1, asset]);
+		await db.query("INSERT OR REPLACE INTO oswap_aas (address, asset_0, asset_1, swap_asset, fee) VALUES (?,?,?,?,?)", [oswapAaAddress, asset0, asset1, asset, fee]);
 		await Promise.all([saveSymbolForAsset(asset), saveSymbolForAsset(asset0), saveSymbolForAsset(asset1)]);
 		resolve();
 	})

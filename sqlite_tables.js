@@ -63,5 +63,10 @@ exports.create = async function(){
 		asset_0 CHAR(44) NOT NULL, \n\
 		asset_1 CHAR(44) NOT NULL \n\
 	)");
-
+	
+	const rows = await db.query("SELECT name FROM pragma_table_info('oswap_aas')");
+	const exists = !!rows.find(r => r.name === 'fee');
+	if (!exists) {
+		await db.query('ALTER TABLE oswap_aas ADD fee INT')
+	}
 }

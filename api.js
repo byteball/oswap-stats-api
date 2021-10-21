@@ -4,6 +4,8 @@ const express = require('express')
 const cors = require('cors');
 const mutex = require('ocore/mutex.js');
 const addZero = require('./helpers/addZero');
+const getBalancesByAddress = require('./helpers/getBalancesByAddress');
+const exchangeRates = require('./rates');
 
 const assocTickersByAssets = {};
 const assocTickersByMarketNames = {};
@@ -51,6 +53,7 @@ function setAsset(row){
 		decimals: row.decimals,
 		description: row.description,
 		symbol: row.symbol,
+		fee: row.fee,
 	};
 
 	if (row.supply)
@@ -323,6 +326,82 @@ async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_ti
 	});
 }
 
+async function getCandles(period, start_time, end_time, quote_id, base_id) {
+	return db.query("SELECT quote_qty AS quote_volume,base_qty AS base_volume,highest_price,lowest_price,open_price,close_price,start_timestamp\n\
+		FROM " + period + "_candles WHERE start_timestamp>=? AND start_timestamp<? AND quote=? AND base=?",
+		[start_time.toISOString(), end_time.toISOString(), quote_id, base_id])
+}
+
+function assetValue(value, asset) {
+	const decimals = asset ? asset.decimals : 0;
+	return value / 10 ** decimals;
+}
+
+function getMarketcap(balances, asset0, asset1) {
+	let assetValue0 = 0;
+	let assetValue1 = 0;
+	let base = 0;
+	if (asset0 === 'base' || asset1 === 'base') base = balances.base;
+
+	if(asset0 === 'base' && asset1 === 'V/jyPXbGIoRhfBXCEMP/xzMzaAsYC4oT0RWzJhdJs0Y=') {
+		console.log('gmc', balances, asset0, asset1);
+		// console.log('debug', )
+	}
+	if (base) {
+		assetValue0 = assetValue1 =
+			(exchangeRates.GBYTE_USD / 1e9) * base;
+	} else {
+		const assetId0 = asset0 === "base" ? "GBYTE" : asset0;
+		const assetId1 = asset1 === "base" ? "GBYTE" : asset1;
+		const assetInfo0 = assocAssets[asset0];
+		const assetInfo1 = assocAssets[asset1];
+		assetValue0 = exchangeRates[`${assetId0}_USD`]
+			? exchangeRates[`${assetId0}_USD`] *
+			assetValue(balances[assetId0], assetInfo0)
+			: 0;
+		assetValue1 = exchangeRates[`${assetId1}_USD`]
+			? exchangeRates[`${assetId1}_USD`] *
+			assetValue(balances[assetId1], assetInfo1)
+			: 0;
+	}
+	return assetValue0 && assetValue1 ? assetValue0 + assetValue1 : 0;
+}
+
+async function getAPY7d(startTime, endTime, quote_id, base_id, balances, fee) {
+	const candles = await getCandles('daily', startTime, endTime, quote_id, base_id);
+	const marketCap = getMarketcap(balances, quote_id, base_id);
+
+	let asset = quote_id === 'base' ? 'GBYTE' : quote_id;
+	let type = "quote";
+	let rate = exchangeRates[`${asset}_USD`];
+	if (!rate) {
+		asset = base_id === 'base' ? 'GBYTE' : base_id;
+		type = "base";
+		rate = exchangeRates[`${asset}_USD`];
+	}
+	const APY7D = candles.map((c) => {
+		const volume = type === "quote" ? c.quote_volume : c.base_volume;
+		const inUSD = volume * rate;
+		if(quote_id === 'S/oCESzEO8G2hvQuI6HsyPr0foLfKwzs+GU73nO9H40=' && base_id === '0IwAk71D5xFP0vTzwamKBwzad3I1ZUjZ1gdeB5OnfOg=') {
+			console.log('aaa', volume, inUSD, fee, marketCap);
+		}
+		return ((inUSD * fee) / marketCap) * 365;
+	});
+
+
+	const avgAPY = APY7D.reduce((prev, curr) => {
+		return prev + curr;
+	}, 0) / 7;
+
+	if(quote_id === 'base' && base_id === 'V/jyPXbGIoRhfBXCEMP/xzMzaAsYC4oT0RWzJhdJs0Y=') {
+		console.log('q', quote_id, base_id, asset, type, rate);
+		console.log(candles);
+		console.log(avgAPY);
+		console.log('b', balances);
+	}
+	return Number((avgAPY * 100).toFixed(2)) || 0;
+}
+
 
 async function start(){
 	
@@ -391,9 +470,7 @@ async function start(){
 		if (assocTickersByMarketNames[marketName]){
 			await waitUntilRefreshFinished();
 
-		const rows = await db.query("SELECT quote_qty AS quote_volume,base_qty AS base_volume,highest_price,lowest_price,open_price,close_price,start_timestamp\n\
-		FROM " + period +"_candles WHERE start_timestamp>=? AND start_timestamp<? AND quote=? AND base=?", 
-		[start_time.toISOString() , end_time.toISOString(), assocTickersByMarketNames[marketName].quote_id, assocTickersByMarketNames[marketName].base_id])
+		const rows = await getCandles(period, start_time, end_time, assocTickersByMarketNames[marketName].quote_id, assocTickersByMarketNames[marketName].base_id);
 		return response.send(rows);
 		}
 		else
@@ -412,6 +489,41 @@ async function start(){
 
 		
 		response.send(await calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time));
+	});
+	
+	app.get('/api/v1/apy7d', async function (request, response) {
+		const startTime = new Date();
+		startTime.setUTCDate(startTime.getUTCDate() - 7);
+		const endTime = new Date();
+		endTime.setDate(endTime.getUTCDate() + 1);
+		
+		const assocAPYByMarketName = {};
+		for (let key in assocTickersByMarketNames) {
+			const q = assocTickersByMarketNames[key];
+			if(key === 'OUSDV1-GBYTE') {
+				console.log('OUSDV1-GBYTE:::::',q);
+			}
+			const rows = await db.query("SELECT address, fee FROM oswap_aas WHERE asset_0=? AND asset_1=?",
+				[q.quote_id, q.base_id]);
+			
+			if (!rows.length) {
+				assocAPYByMarketName[key] = 0
+			} else {
+				const fee = rows[0].fee / 10 ** 11;
+				const balances = await getBalancesByAddress(rows[0].address);
+				assocAPYByMarketName[key] = await getAPY7d(startTime,
+					endTime,
+					q.quote_id,
+					q.base_id,
+					balances,
+					fee);
+			}
+		}
+		response.send(assocAPYByMarketName);
+	});
+	
+	app.get('/api/v1/exchangeRates', async function (request, response) {
+		response.send(exchangeRates);
 	});
 
 	server.listen(conf.apiPort, () => {
