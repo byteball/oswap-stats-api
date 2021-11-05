@@ -4,6 +4,7 @@ exports.create = async function(){
 	console.log("will create tables if not exist");
 
 	await db.query("CREATE TABLE IF NOT EXISTS hourly_candles (\n\
+		aa_address CHAR(32) NOT NULL, \n\
 		base CHAR(44) NOT NULL, \n\
 		quote CHAR(44) NOT NULL, \n\
 		quote_qty REAL DEFAULT 0, \n\
@@ -17,6 +18,7 @@ exports.create = async function(){
 	)");
 
 	await db.query("CREATE TABLE IF NOT EXISTS daily_candles (\n\
+		aa_address CHAR(32) NOT NULL, \n\
 		base CHAR(44) NOT NULL, \n\
 		quote CHAR(44) NOT NULL, \n\
 		quote_qty REAL DEFAULT 0, \n\
@@ -30,7 +32,8 @@ exports.create = async function(){
 	)");
 
 	await db.query("CREATE TABLE IF NOT EXISTS trades (\n\
-		response_unit CHAR(44) NOT NULL, \n\
+		aa_address CHAR(32) NOT NULL, \n\
+  	response_unit CHAR(44) NOT NULL, \n\
 		indice INTEGER DEFAULT 0, \n\
 		base CHAR(44) NOT NULL, \n\
 		quote CHAR(44) NOT NULL, \n\
@@ -39,6 +42,7 @@ exports.create = async function(){
 		type VARCHAR(40), \n\
 		timestamp TIMESTAMP NOT NULL, \n\
 		UNIQUE (response_unit, indice)\n\
+		FOREIGN KEY (aa_address) REFERENCES oswap_aas(address)\n\
 	)");
 	await db.query("CREATE INDEX IF NOT EXISTS tradesByBaseQuoteAndTime ON trades(base,quote,timestamp)");
 	await db.query("CREATE INDEX IF NOT EXISTS tradesByQuoteBaseAndTime ON trades(quote,base,timestamp)");
@@ -63,7 +67,7 @@ exports.create = async function(){
 		asset_0 CHAR(44) NOT NULL, \n\
 		asset_1 CHAR(44) NOT NULL \n\
 	)");
-	
+
 	const rows = await db.query("SELECT name FROM pragma_table_info('oswap_aas')");
 	const exists = !!rows.find(r => r.name === 'fee');
 	if (!exists) {

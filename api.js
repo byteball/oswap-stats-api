@@ -17,7 +17,7 @@ var assocAssets = {};
 var assocAssetsBySymbols = {};
 
 const unifiedCryptoAssetIdsByAssets = {
-	base: { 
+	base: {
 		id: 1492,
 		name: 'Obyte'
 	}
@@ -58,7 +58,7 @@ function setAsset(row){
 
 	if (row.supply)
 		assocAssetsBySymbols[row.symbol].supply = row.supply / 10 ** row.decimals;
-		
+
 	if (unifiedCryptoAssetIdsByAssets[row.asset]){
 		assocAssetsBySymbols[row.symbol].unified_cryptoasset_id = unifiedCryptoAssetIdsByAssets[row.asset].id;
 		assocAssetsBySymbols[row.symbol].name = unifiedCryptoAssetIdsByAssets[row.asset].name;
@@ -108,7 +108,7 @@ async function refreshMarket(base, quote){
 		await refreshTrades(base, quote);
 		await refreshTicker(base, quote);
 		await makeNextCandlesForMarket(base, quote);
-	} else 
+	} else
 		console.log("symbol missing");
 	bRefreshing = false;
 	if (unlock) unlock();
@@ -124,12 +124,15 @@ async function refreshTrades(base, quote){
 	const ticker = assocTickersByAssets[base + "_" + quote];
 	if (!ticker)
 		return console.log(base + "_" + quote + " not found in assocTickersByAssets")
+
+	const address = await getTheMostVoluminousAddress(base, quote);
+
 	const trades = assocTradesByAssets[base + "_" + quote];
 
 	trades.length = 0; // we clear array without deferencing it
 
 	var rows = await db.query("SELECT quote_qty*1.0/base_qty AS price,base_qty AS base_volume,quote_qty AS quote_volume,timestamp,response_unit,indice,type,timestamp FROM trades \n\
-	WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? ORDER BY timestamp DESC",[quote, base]);
+	WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=? ORDER BY timestamp DESC", [quote, base, address]);
 	rows.forEach(function(row){
 		trades.push({
 			market_name: ticker.base_symbol + getMarketNameSeparator() + ticker.quote_symbol,
@@ -146,19 +149,54 @@ async function refreshTrades(base, quote){
 
 }
 
+async function getTheMostVoluminousAddress(base, quote) {
+	const addresses = await db.query("SELECT DISTINCT aa_address FROM trades WHERE base=? AND quote=?", [base, quote]);
+
+	if(addresses.length === 1) {
+		return addresses[0]
+	}
+
+	let balances = [];
+
+	const query = `SELECT address, asset, SUM(amount) AS balance FROM outputs
+ JOIN units USING(unit) WHERE is_spent=0
+  AND is_stable=1 AND address=?
+   AND asset${base === 'base' ? ' IS NULL' : '=?'}
+    AND sequence='good' GROUP BY address, asset`;
+
+	for (let i = 0; i < addresses.length; i++) {
+		const params = [addresses[i].aa_address];
+
+		if(base !== 'base') {
+			params.push(base)
+		}
+
+		const rows = await db.query(query, params);
+
+		if(rows.length) {
+			balances.push(rows[0]);
+		}
+	}
+
+	const max = balances.reduce((prev, current) => (prev.balance > current.balance) ? prev : current);
+
+	return max.address;
+}
 
 async function refreshTicker(base, quote){
 	const ticker = assocTickersByAssets[base + "_" + quote];
 	if (!ticker)
 		return console.log(base + "_" + quote + " not found in assocTickersByAssets")
 
-	var rows = await db.query("SELECT MIN(quote_qty*1.0/base_qty) AS low FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=?",[quote, base]);
+	const address = await getTheMostVoluminousAddress(base, quote);
+
+	var rows = await db.query("SELECT MIN(quote_qty*1.0/base_qty) AS low FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
 	if (rows[0])
 		ticker.lowest_price_24h = rows[0].low * getDecimalsPriceCoefficient(base, quote);
 	else
 		delete ticker.lowest_price_24h;
 
-	rows = await db.query("SELECT MAX(quote_qty*1.0/base_qty) AS high FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=?",[quote, base]);
+	rows = await db.query("SELECT MAX(quote_qty*1.0/base_qty) AS high FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
 	if (rows[0])
 		ticker.highest_price_24h = rows[0].high * getDecimalsPriceCoefficient(base, quote);
 	else
@@ -168,19 +206,19 @@ async function refreshTicker(base, quote){
 	if (rows[0])
 		ticker.last_price = rows[0].last_price * getDecimalsPriceCoefficient(base, quote);
 
-	rows = await db.query("SELECT SUM(quote_qty) AS quote_volume FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=?",[quote, base]);
+	rows = await db.query("SELECT SUM(quote_qty) AS quote_volume FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
 	if (rows[0])
 		ticker.quote_volume = rows[0].quote_volume  / 10 ** assocAssets[quote].decimals;
 	else
 		ticker.quote_volume = 0;
 
-	rows = await db.query("SELECT SUM(base_qty) AS base_volume FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=?",[quote, base]);
+	rows = await db.query("SELECT SUM(base_qty) AS base_volume FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
 		if (rows[0])
 			ticker.base_volume = rows[0].base_volume  / 10 ** assocAssets[base].decimals;
 		else
 			ticker.base_volume = 0;
 
-	rows = await db.query("SELECT SUM(base_qty) AS base_volume FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=?",[quote, base]);
+	rows = await db.query("SELECT SUM(base_qty) AS base_volume FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
 			if (rows[0])
 				ticker.base_volume = rows[0].base_volume  / 10 ** assocAssets[base].decimals;
 			else
@@ -196,10 +234,13 @@ async function makeNextCandlesForMarket(base, quote){
 
 async function makeNextDailyCandlesForMarket(base, quote, bReplaceLastCandle){
 	var last_start_timestamp,last_end_timestamp,next_end_timestamp;
+
+	const address = await getTheMostVoluminousAddress(base, quote);
+
 	const candles = await db.query("SELECT start_timestamp AS last_start_timestamp, \n\
 	strftime('%Y-%m-%dT%H:00:00.000Z', start_timestamp, '+24 hours') AS last_end_timestamp, \n\
 	strftime('%Y-%m-%dT%H:00:00.000Z', start_timestamp, '+48 hours') AS next_end_timestamp \n\
-	FROM daily_candles WHERE base=? AND quote=? ORDER BY start_timestamp DESC LIMIT 1", [base,quote]);
+	FROM daily_candles WHERE base=? AND quote=? AND aa_address=? ORDER BY start_timestamp DESC LIMIT 1", [base,quote, address]);
 
 	if (candles[0]){
 		last_start_timestamp = candles[0].last_start_timestamp;
@@ -207,7 +248,7 @@ async function makeNextDailyCandlesForMarket(base, quote, bReplaceLastCandle){
 		next_end_timestamp = candles[0].next_end_timestamp;
 	} else { // if no candle exists yet, we find the first candle time start
 		const trades = await db.query("SELECT strftime('%Y-%m-%dT00:00:00.000Z',timestamp) AS last_start_timestamp, strftime('%Y-%m-%dT00:00:00.000Z', DATETIME(timestamp, '+24 hours')) AS last_end_timestamp\n\
-		FROM trades WHERE base=? AND quote=? ORDER BY timestamp ASC LIMIT 1", [base, quote]);
+		FROM trades WHERE base=? AND quote=? AND aa_address=? ORDER BY timestamp ASC LIMIT 1", [base, quote, address]);
 		if (!trades[0])
 			return console.log("no trade yet for " + base + " - " + quote);
 		last_start_timestamp = trades[0].last_start_timestamp;
@@ -217,9 +258,9 @@ async function makeNextDailyCandlesForMarket(base, quote, bReplaceLastCandle){
 	if (last_end_timestamp > (new Date()).toISOString())
 		return; // current candle not closed yet
 	if (bReplaceLastCandle)
-		await makeCandleForPair('daily_candles', last_start_timestamp, last_end_timestamp, base, quote);
+		await makeCandleForPair('daily_candles', last_start_timestamp, last_end_timestamp, base, quote, address);
 	else
-		await makeCandleForPair('daily_candles', last_end_timestamp, next_end_timestamp, base, quote);
+		await makeCandleForPair('daily_candles', last_end_timestamp, next_end_timestamp, base, quote, address);
 
 	await makeNextDailyCandlesForMarket(base, quote);
 }
@@ -227,10 +268,13 @@ async function makeNextDailyCandlesForMarket(base, quote, bReplaceLastCandle){
 
 async function makeNextHourlyCandlesForMarket(base, quote, bReplaceLastCandle){
 	var last_start_timestamp,last_end_timestamp,next_end_timestamp;
+
+	const address = await getTheMostVoluminousAddress(base, quote);
+
 	const candles = await db.query("SELECT start_timestamp AS last_start_timestamp, \n\
 	strftime('%Y-%m-%dT%H:00:00.000Z', start_timestamp, '+1 hour') AS last_end_timestamp, \n\
 	strftime('%Y-%m-%dT%H:00:00.000Z', start_timestamp, '+2 hours') AS next_end_timestamp \n\
-	FROM hourly_candles WHERE base=? AND quote=? ORDER BY start_timestamp DESC LIMIT 1", [base,quote]);
+	FROM hourly_candles WHERE base=? AND quote=? AND aa_address=? ORDER BY start_timestamp DESC LIMIT 1", [base, quote, address]);
 
 	if (candles[0]){
 		last_start_timestamp = candles[0].last_start_timestamp;
@@ -238,7 +282,7 @@ async function makeNextHourlyCandlesForMarket(base, quote, bReplaceLastCandle){
 		next_end_timestamp = candles[0].next_end_timestamp;
 	} else { // if no candle exists yet, we find the first candle time start
 		const trades = await db.query("SELECT strftime('%Y-%m-%dT%H:00:00.000Z',timestamp) AS last_start_timestamp, strftime('%Y-%m-%dT%H:00:00.000Z', DATETIME(timestamp, '+1 hour')) AS last_end_timestamp\n\
-		FROM trades WHERE base=? AND quote=? ORDER BY timestamp ASC LIMIT 1", [base, quote]);
+		FROM trades WHERE base=? AND quote=? AND aa_address=? ORDER BY timestamp ASC LIMIT 1", [base, quote, address]);
 		if (!trades[0])
 			return console.log("no trade yet for " + base + " - " + quote);
 		last_start_timestamp = trades[0].last_start_timestamp;
@@ -247,20 +291,20 @@ async function makeNextHourlyCandlesForMarket(base, quote, bReplaceLastCandle){
 	if (last_end_timestamp > (new Date()).toISOString())
 		return; // current candle not closed yet
 	if (bReplaceLastCandle)
-		await makeCandleForPair('hourly_candles', last_start_timestamp, last_end_timestamp, base, quote);
+		await makeCandleForPair('hourly_candles', last_start_timestamp, last_end_timestamp, base, quote, address);
 	else
-		await makeCandleForPair('hourly_candles', last_end_timestamp, next_end_timestamp, base, quote);
+		await makeCandleForPair('hourly_candles', last_end_timestamp, next_end_timestamp, base, quote, address);
 
 	await makeNextHourlyCandlesForMarket(base, quote);
 
 }
 
-async function makeCandleForPair(table_name, start_timestamp, end_timestamp, base, quote){
+async function makeCandleForPair(table_name, start_timestamp, end_timestamp, base, quote, aa_address){
 	var low, high, open_price, close_price;
 	var quote_volume, base_volume = 0;
 
 	var rows = await db.query("SELECT MIN(quote_qty*1.0/base_qty) AS low,MAX(quote_qty*1.0/base_qty) AS high,SUM(quote_qty) AS quote_volume,SUM(base_qty) AS base_volume \n\
-	 FROM trades WHERE timestamp >=? AND timestamp <?  AND quote=? AND base=?",[start_timestamp, end_timestamp, quote, base]);
+	 FROM trades WHERE timestamp >=? AND timestamp <?  AND quote=? AND base=? AND aa_address=?",[start_timestamp, end_timestamp, quote, base, aa_address]);
 
 	if (rows[0] && rows[0].low){
 		low = rows[0].low * getDecimalsPriceCoefficient(base, quote);
@@ -268,17 +312,17 @@ async function makeCandleForPair(table_name, start_timestamp, end_timestamp, bas
 		quote_volume = rows[0].quote_volume  / 10 ** assocAssets[quote].decimals;
 		base_volume = rows[0].base_volume  / 10 ** assocAssets[base].decimals;
 
-		rows = await db.query("SELECT quote_qty*1.0/base_qty AS open_price FROM trades WHERE timestamp >=? AND quote=? AND base=? \n\
-		ORDER BY timestamp ASC LIMIT 1" ,[start_timestamp, quote, base]);
+		rows = await db.query("SELECT quote_qty*1.0/base_qty AS open_price FROM trades WHERE timestamp >=? AND quote=? AND base=? AND aa_address=? \n\
+		ORDER BY timestamp ASC LIMIT 1" ,[start_timestamp, quote, base, aa_address]);
 
 		open_price = rows[0].open_price * getDecimalsPriceCoefficient(base, quote);
-		rows = await db.query("SELECT quote_qty*1.0/base_qty AS close_price FROM trades WHERE timestamp <? AND quote=? AND base=? \n\
-		ORDER BY timestamp DESC LIMIT 1", [end_timestamp, quote, base]);
+		rows = await db.query("SELECT quote_qty*1.0/base_qty AS close_price FROM trades WHERE timestamp <? AND quote=? AND base=? AND aa_address=? \n\
+		ORDER BY timestamp DESC LIMIT 1", [end_timestamp, quote, base, aa_address]);
 		close_price = rows[0].close_price * getDecimalsPriceCoefficient(base, quote);
 
 	} else {
-		rows = await db.query("SELECT close_price FROM " + table_name + " WHERE start_timestamp <? AND quote=? AND base=? ORDER BY start_timestamp DESC LIMIT 1",
-		[start_timestamp, quote, base]);
+		rows = await db.query("SELECT close_price FROM " + table_name + " WHERE start_timestamp <? AND quote=? AND base=? AND aa_address=? ORDER BY start_timestamp DESC LIMIT 1",
+		[start_timestamp, quote, base, aa_address]);
 		low = rows[0].close_price;
 		high = rows[0].close_price;
 		open_price = rows[0].close_price;
@@ -287,8 +331,8 @@ async function makeCandleForPair(table_name, start_timestamp, end_timestamp, bas
 		base_volume = 0;
 	}
 
-	await db.query("REPLACE INTO " + table_name + " (base,quote,quote_qty,base_qty,highest_price,lowest_price,open_price,close_price,start_timestamp)\n\
-	VALUES (?,?,?,?,?,?,?,?,?)",[ base, quote, quote_volume, base_volume, high, low, open_price, close_price,start_timestamp]);
+	await db.query("REPLACE INTO " + table_name + " (base,quote,aa_address,quote_qty,base_qty,highest_price,lowest_price,open_price,close_price,start_timestamp)\n\
+	VALUES (?,?,?,?,?,?,?,?,?,?)",[ base, quote, aa_address, quote_volume, base_volume, high, low, open_price, close_price,start_timestamp]);
 }
 
 async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time) {
@@ -327,9 +371,11 @@ async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_ti
 }
 
 async function getCandles(period, start_time, end_time, quote_id, base_id) {
+	const address = await getTheMostVoluminousAddress(base_id, quote_id);
+
 	return db.query("SELECT quote_qty AS quote_volume,base_qty AS base_volume,highest_price,lowest_price,open_price,close_price,start_timestamp\n\
-		FROM " + period + "_candles WHERE start_timestamp>=? AND start_timestamp<? AND quote=? AND base=?",
-		[start_time.toISOString(), end_time.toISOString(), quote_id, base_id])
+		FROM " + period + "_candles WHERE start_timestamp>=? AND start_timestamp<? AND quote=? AND base=? AND aa_address=?",
+		[start_time.toISOString(), end_time.toISOString(), quote_id, base_id, address])
 }
 
 function assetValue(value, asset) {
@@ -343,10 +389,6 @@ function getMarketcap(balances, asset0, asset1) {
 	let base = 0;
 	if (asset0 === 'base' || asset1 === 'base') base = balances.base;
 
-	if(asset0 === 'base' && asset1 === 'V/jyPXbGIoRhfBXCEMP/xzMzaAsYC4oT0RWzJhdJs0Y=') {
-		console.log('gmc', balances, asset0, asset1);
-		// console.log('debug', )
-	}
 	if (base) {
 		assetValue0 = assetValue1 =
 			(exchangeRates.GBYTE_USD / 1e9) * base;
@@ -382,9 +424,7 @@ async function getAPY7d(startTime, endTime, quote_id, base_id, balances, fee) {
 	const APY7D = candles.map((c) => {
 		const volume = type === "quote" ? c.quote_volume : c.base_volume;
 		const inUSD = volume * rate;
-		if(quote_id === 'S/oCESzEO8G2hvQuI6HsyPr0foLfKwzs+GU73nO9H40=' && base_id === '0IwAk71D5xFP0vTzwamKBwzad3I1ZUjZ1gdeB5OnfOg=') {
-			console.log('aaa', volume, inUSD, fee, marketCap);
-		}
+
 		return ((inUSD * fee) / marketCap) * 365;
 	});
 
@@ -393,18 +433,11 @@ async function getAPY7d(startTime, endTime, quote_id, base_id, balances, fee) {
 		return prev + curr;
 	}, 0) / 7;
 
-	if(quote_id === 'base' && base_id === 'V/jyPXbGIoRhfBXCEMP/xzMzaAsYC4oT0RWzJhdJs0Y=') {
-		console.log('q', quote_id, base_id, asset, type, rate);
-		console.log(candles);
-		console.log(avgAPY);
-		console.log('b', balances);
-	}
 	return Number((avgAPY * 100).toFixed(2)) || 0;
 }
 
 
 async function start(){
-	
 	const app = express();
 	const server = require('http').Server(app);
 	app.use(cors());
@@ -487,30 +520,33 @@ async function start(){
 		if (!end_time)
 			return response.status(400).send('end_time not valid');
 
-		
 		response.send(await calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time));
 	});
-	
+
 	app.get('/api/v1/apy7d', async function (request, response) {
 		const startTime = new Date();
 		startTime.setUTCDate(startTime.getUTCDate() - 7);
 		const endTime = new Date();
 		endTime.setDate(endTime.getUTCDate() + 1);
-		
+
 		const assocAPYByMarketName = {};
+
 		for (let key in assocTickersByMarketNames) {
 			const q = assocTickersByMarketNames[key];
+
+			const address = await getTheMostVoluminousAddress(q.base_id, q.quote_id);
+
 			if(key === 'OUSDV1-GBYTE') {
 				console.log('OUSDV1-GBYTE:::::',q);
 			}
-			const rows = await db.query("SELECT address, fee FROM oswap_aas WHERE asset_0=? AND asset_1=?",
-				[q.quote_id, q.base_id]);
-			
+			const rows = await db.query("SELECT fee FROM oswap_aas WHERE address=?",
+				[address]);
+
 			if (!rows.length) {
 				assocAPYByMarketName[key] = 0
 			} else {
 				const fee = rows[0].fee / 10 ** 11;
-				const balances = await getBalancesByAddress(rows[0].address);
+				const balances = await getBalancesByAddress(address);
 				assocAPYByMarketName[key] = await getAPY7d(startTime,
 					endTime,
 					q.quote_id,
@@ -521,7 +557,7 @@ async function start(){
 		}
 		response.send(assocAPYByMarketName);
 	});
-	
+
 	app.get('/api/v1/exchangeRates', async function (request, response) {
 		response.send(exchangeRates);
 	});
