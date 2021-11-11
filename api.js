@@ -153,7 +153,7 @@ async function getTheMostVoluminousAddress(base, quote) {
 	const addresses = await db.query("SELECT DISTINCT aa_address FROM trades WHERE base=? AND quote=?", [base, quote]);
 
 	if(addresses.length === 1) {
-		return addresses[0]
+		return addresses[0].aa_address;
 	}
 
 	let balances = [];
@@ -179,7 +179,6 @@ async function getTheMostVoluminousAddress(base, quote) {
 	}
 
 	const max = balances.reduce((prev, current) => (prev.balance > current.balance) ? prev : current);
-
 	return max.address;
 }
 
@@ -536,9 +535,6 @@ async function start(){
 
 			const address = await getTheMostVoluminousAddress(q.base_id, q.quote_id);
 
-			if(key === 'OUSDV1-GBYTE') {
-				console.log('OUSDV1-GBYTE:::::',q);
-			}
 			const rows = await db.query("SELECT fee FROM oswap_aas WHERE address=?",
 				[address]);
 

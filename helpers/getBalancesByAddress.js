@@ -6,8 +6,6 @@ async function getBalancesByAddress(address) {
     FROM outputs JOIN units USING(unit) \n\
     WHERE is_spent=0 AND is_stable=1 AND address=? AND sequence='good' \n\
     GROUP BY address, asset", [address]);
-  if(address === 'UNSX6BCDLLZCLYOD7UFBJFVQIUQ2ENTU')
-    console.log('gbb', rows);
   
   const balances = {};
   rows.forEach(row => {
