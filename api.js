@@ -435,42 +435,8 @@ async function getAPY7d(startTime, endTime, quote_id, base_id, balances, fee) {
 	return Number((avgAPY * 100).toFixed(2)) || 0;
 }
 
-async function getHistory(address) {
-	const result = await db.query("SELECT * FROM aa_responses WHERE aa_address=? \n\
-		AND (json_extract(response, '$.responseVars.type') = 'swap' OR \n\
-		json_extract(response, '$.responseVars.type') = 'mint' OR \n\
-		json_extract(response, '$.responseVars.type') = 'burn') \n\
-		ORDER BY creation_date DESC LIMIT 20", [address]);
-
-	return await Promise.all(result.map(async aaResponse => {
-		const output = await db.query("SELECT * FROM outputs WHERE unit=?", [aaResponse.trigger_unit]);
-		console.error('11111111111111111', output);
-		const item = {
-			author: output.address,
-			sent_asset: output.asset,
-			sent_amount: output.amount,
-			date: aaResponse.creation_date,
-		}
-
-		const response = JSON.parse(aaResponse.response);
-		const type = response.type;
-
-		if (type === 'burn') {
-			item.asset0_amount = response.asset0_amount;
-			item.asset1_amount = response.asset1_amount;
-		}
-
-		if (type === 'mint') {
-			item.asset_amount = response.asset_amount;
-		}
-
-		if (type === 'swap') {
-			item.direction = response.asset0_amount ? '1-0' : '0-1';
-			item.asset_amount = response.asset0_amount ? response.asset0_amount : response.asset1_amount;
-		}
-
-		return item;
-	}));
+async function getPoolHistory(address) {
+	return db.query("SELECT * FROM pool_history WHERE aa_address=? ORDER BY timestamp DESC LIMIT 20", [address]);
 }
 
 async function start(){
@@ -598,7 +564,7 @@ async function start(){
 	app.get('/api/v1/history/:address', async function (request, response) {
 		const address = request.params.address;
 
-		const history = await getHistory(address);
+		const history = await getPoolHistory(address);
 
 		response.send(history);
 	});

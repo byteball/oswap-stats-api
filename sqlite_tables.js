@@ -47,6 +47,20 @@ exports.create = async function(){
 	await db.query("CREATE INDEX IF NOT EXISTS tradesByBaseQuoteAndTime ON trades(base,quote,timestamp)");
 	await db.query("CREATE INDEX IF NOT EXISTS tradesByQuoteBaseAndTime ON trades(quote,base,timestamp)");
 
+	await db.query("CREATE TABLE IF NOT EXISTS pool_history (\n\
+		aa_address CHAR(32) NOT NULL, \n\
+  	response_unit CHAR(44) NOT NULL, \n\
+  	trigger_unit CHAR(44) NOT NULL, \n\
+		base_asset CHAR(44) NOT NULL, \n\
+		quote_asset CHAR(44) NOT NULL, \n\
+		quote_qty INTEGER NOT NULL, \n\
+		base_qty INTEGER NOT NULL, \n\
+		type VARCHAR(40), \n\
+		timestamp TIMESTAMP NOT NULL, \n\
+		FOREIGN KEY (aa_address) REFERENCES oswap_aas(address)\n\
+	)");
+	await db.query("CREATE INDEX IF NOT EXISTS poolHistoryByPoolAddress ON pool_history(aa_address)");
+
 	await db.query("CREATE TABLE IF NOT EXISTS oswap_assets (\n\
 		asset CHAR(44) NOT NULL PRIMARY KEY, \n\
 		symbol VARCHAR(40) NOT NULL, \n\
