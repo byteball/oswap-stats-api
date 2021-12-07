@@ -51,6 +51,7 @@ exports.create = async function(){
 		aa_address CHAR(32) NOT NULL, \n\
   	response_unit CHAR(44) NOT NULL, \n\
   	trigger_unit CHAR(44) NOT NULL, \n\
+  	trigger_address CHAR(32) NOT NULL, \n\
 		base_asset CHAR(44) NOT NULL, \n\
 		quote_asset CHAR(44) NOT NULL, \n\
 		quote_qty INTEGER NOT NULL, \n\
