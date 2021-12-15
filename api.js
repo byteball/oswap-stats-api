@@ -254,8 +254,11 @@ async function makeNextDailyCandlesForMarket(base, quote, bReplaceLastCandle){
 		last_end_timestamp = trades[0].last_end_timestamp;
 	}
 
-	if (last_end_timestamp > (new Date()).toISOString())
+	
+	if (last_end_timestamp > (new Date()).toISOString()) {
+		await makeCandleForPair('daily_candles', last_start_timestamp, last_end_timestamp, base, quote, address);
 		return; // current candle not closed yet
+	}
 	if (bReplaceLastCandle)
 		await makeCandleForPair('daily_candles', last_start_timestamp, last_end_timestamp, base, quote, address);
 	else

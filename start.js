@@ -190,7 +190,7 @@ async function start(){
 	addWatchedAas();
 	eventBus.on('connected', addWatchedAas);
 	lightWallet.refreshLightClientHistory();
-	api.start();
+	eventBus.on('refresh_light_done', api.start);
 	initPriceDumpService()
 }
 
