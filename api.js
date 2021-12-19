@@ -442,7 +442,11 @@ async function getPoolHistory(address) {
 	return db.query("SELECT * FROM pool_history WHERE aa_address=? ORDER BY timestamp DESC LIMIT 20", [address]);
 }
 
+let started = false;
+
 async function start(){
+	if (started) return
+	if (!started) started = true;
 	const app = express();
 	const server = require('http').Server(app);
 	app.use(cors());
