@@ -423,19 +423,18 @@ async function getAPY7d(startTime, endTime, quote_id, base_id, balances, fee) {
 		type = "base";
 		rate = exchangeRates[`${asset}_USD`];
 	}
-	const APY7D = candles.map((c) => {
+
+	const earning7d = candles
+	.map((c) => {
 		const volume = type === "quote" ? c.quote_volume : c.base_volume;
 		const inUSD = volume * rate;
+		return inUSD * fee;
+	})
+	.reduce((prev, curr) => prev + curr, 0);
 
-		return ((inUSD * fee) / marketCap) * 365;
-	});
-
-
-	const avgAPY = APY7D.reduce((prev, curr) => {
-		return prev + curr;
-	}, 0) / 7;
-
-	return Number((avgAPY * 100).toFixed(2)) || 0;
+	const apy = (1 + earning7d / marketCap) ** (365 / 7) - 1;
+	
+	return Number((apy * 100).toFixed(2)) || 0;
 }
 
 async function getPoolHistory(address) {
