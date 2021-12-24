@@ -119,6 +119,12 @@ async function refreshAsset(asset){
 	setAsset(rows[0]);
 }
 
+function getOneDayAgoDate() {
+	const d = new Date();
+	d.setUTCDate(d.getUTCDate() - 1);
+	return d.toISOString();
+}
+
 
 async function refreshTrades(base, quote){
 	const ticker = assocTickersByAssets[base + "_" + quote];
@@ -132,7 +138,7 @@ async function refreshTrades(base, quote){
 	trades.length = 0; // we clear array without deferencing it
 
 	var rows = await db.query("SELECT quote_qty*1.0/base_qty AS price,base_qty AS base_volume,quote_qty AS quote_volume,timestamp,response_unit,indice,type,timestamp FROM trades \n\
-	WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=? ORDER BY timestamp DESC", [quote, base, address]);
+	WHERE timestamp > ? AND quote=? AND base=? AND aa_address=? ORDER BY timestamp DESC", [getOneDayAgoDate(), quote, base, address]);
 	rows.forEach(function(row){
 		trades.push({
 			market_name: ticker.base_symbol + getMarketNameSeparator() + ticker.quote_symbol,
@@ -188,14 +194,16 @@ async function refreshTicker(base, quote){
 		return console.log(base + "_" + quote + " not found in assocTickersByAssets")
 
 	const address = await getTheMostVoluminousAddress(base, quote);
+	
+	const date = getOneDayAgoDate();
 
-	var rows = await db.query("SELECT MIN(quote_qty*1.0/base_qty) AS low FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
+	var rows = await db.query("SELECT MIN(quote_qty*1.0/base_qty) AS low FROM trades WHERE timestamp > ? AND quote=? AND base=? AND aa_address=?", [date, quote, base, address]);
 	if (rows[0])
 		ticker.lowest_price_24h = rows[0].low * getDecimalsPriceCoefficient(base, quote);
 	else
 		delete ticker.lowest_price_24h;
 
-	rows = await db.query("SELECT MAX(quote_qty*1.0/base_qty) AS high FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
+	rows = await db.query("SELECT MAX(quote_qty*1.0/base_qty) AS high FROM trades WHERE timestamp > ? AND quote=? AND base=? AND aa_address=?", [date, quote, base, address]);
 	if (rows[0])
 		ticker.highest_price_24h = rows[0].high * getDecimalsPriceCoefficient(base, quote);
 	else
@@ -205,19 +213,19 @@ async function refreshTicker(base, quote){
 	if (rows[0])
 		ticker.last_price = rows[0].last_price * getDecimalsPriceCoefficient(base, quote);
 
-	rows = await db.query("SELECT SUM(quote_qty) AS quote_volume FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
+	rows = await db.query("SELECT SUM(quote_qty) AS quote_volume FROM trades WHERE timestamp > ? AND quote=? AND base=? AND aa_address=?", [date, quote, base, address]);
 	if (rows[0])
 		ticker.quote_volume = rows[0].quote_volume  / 10 ** assocAssets[quote].decimals;
 	else
 		ticker.quote_volume = 0;
 
-	rows = await db.query("SELECT SUM(base_qty) AS base_volume FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
+	rows = await db.query("SELECT SUM(base_qty) AS base_volume FROM trades WHERE timestamp > ? AND quote=? AND base=? AND aa_address=?", [date, quote, base, address]);
 		if (rows[0])
 			ticker.base_volume = rows[0].base_volume  / 10 ** assocAssets[base].decimals;
 		else
 			ticker.base_volume = 0;
 
-	rows = await db.query("SELECT SUM(base_qty) AS base_volume FROM trades WHERE timestamp > date('now' ,'-1 days') AND quote=? AND base=? AND aa_address=?", [quote, base, address]);
+	rows = await db.query("SELECT SUM(base_qty) AS base_volume FROM trades WHERE timestamp > ? AND quote=? AND base=? AND aa_address=?", [date, quote, base, address]);
 			if (rows[0])
 				ticker.base_volume = rows[0].base_volume  / 10 ** assocAssets[base].decimals;
 			else
