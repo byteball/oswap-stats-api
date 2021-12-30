@@ -13,7 +13,7 @@ By default the API is accessible at `http://localhost:4100` (`http://localhost:4
 
 #### Run
 
-`node start`
+`node start.js oswap-stats 1>log 2>errlog &`
 
 
 #### Endpoints
