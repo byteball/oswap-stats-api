@@ -83,6 +83,13 @@ exports.create = async function(){
 		asset_1 CHAR(44) NOT NULL \n\
 	)");
 
+	await db.query("CREATE TABLE IF NOT EXISTS oswap_aa_balances ( \n\
+    address CHAR(32) NOT NULL, \n\
+    asset CHAR(44) DEFAULT NULL, \n\
+    balance BIGINT NOT NULL, \n\
+    balance_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\
+    PRIMARY KEY (address, asset, balance_date))")
+
 	const rows = await db.query("SELECT name FROM pragma_table_info('oswap_aas')");
 	const exists = !!rows.find(r => r.name === 'fee');
 	if (!exists) {

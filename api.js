@@ -113,7 +113,7 @@ async function refreshMarket(base, quote){
 	} else
 		console.log("symbol missing");
 	bRefreshing = false;
-	if (unlock) unlock();
+	unlock();
 }
 
 async function refreshAsset(asset){
@@ -351,35 +351,20 @@ async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_ti
 	start_time.setUTCHours(0, 0, 0);
 	const start = start_time.getUTCFullYear() + '-' + addZero(start_time.getUTCMonth() +1) + '-' + addZero(start_time.getUTCDate())+' 00:00:00';
 	const end = end_time.getUTCFullYear() + '-' + addZero(end_time.getUTCMonth() +1) + '-' + addZero(end_time.getUTCDate())+' 23:59:59';
-	const rows = await db.query("SELECT * FROM oswap_aas_balances WHERE address = ? \n\
-		AND creation_date >= ? AND creation_date <= ?", [address, start, end]);
+	const rows = await db.query("SELECT * FROM oswap_aa_balances WHERE address = ? \n\
+		AND balance_date >= ? AND balance_date <= ? ORDER BY balance_date ASC", [address, start, end]);
 	const assocDateToBalances = {};
 	rows.forEach(row => {
-		if(!assocDateToBalances[row.creation_date]) {
-			assocDateToBalances[row.creation_date] = {
-				creation_date: row.creation_date
+		if(!assocDateToBalances[row.balance_date]) {
+			assocDateToBalances[row.balance_date] = {
+				balance_date: row.balance_date
 			}
 		}
 		if(row.asset === null) row.asset = 'GBYTE';
-		assocDateToBalances[row.creation_date][row.asset] = row.balance;
+		assocDateToBalances[row.balance_date][row.asset] = row.balance;
 	})
 
-	const todayRows = await db.query(
-		"SELECT address, asset, SUM(amount) AS balance \n\
-		FROM outputs JOIN units USING(unit) \n\
-		WHERE is_spent=0 AND is_stable=1 AND address=? AND sequence='good' \n\
-		GROUP BY address, asset", [address]);
-	const date = new Date();
-	const key = date.getUTCFullYear() + '-' + addZero(date.getUTCMonth() + 1) + '-' + addZero(date.getUTCDate()) + ' 23:59:59'
-	assocDateToBalances[key] = {creation_date: key};
-	todayRows.forEach(row => {
-		if(row.asset === null) row.asset = 'GBYTE';
-		assocDateToBalances[key][row.asset] = row.balance;
-	})
-
-	return Object.values(assocDateToBalances).sort((a, b) => {
-		return new Date(a.creation_date).getTime() - new Date(b.creation_date).getTime()
-	});
+	return Object.values(assocDateToBalances)
 }
 
 async function getCandles(period, start_time, end_time, quote_id, base_id) {

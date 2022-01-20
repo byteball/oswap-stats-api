@@ -8,8 +8,9 @@ const objectHash = require('ocore/object_hash.js');
 const sqlite_tables = require('./sqlite_tables.js');
 const db = require('ocore/db.js');
 const api = require('./api.js');
-const dump = require('./dumpFunction');
-const addZero = require('./helpers/addZero');
+const initHistoryAABalances = require('./initHistoryAABalances');
+const { dumpByAddress } = require('./dumpFunction');
+const formatDate = require('./helpers/formatDate');
 
 lightWallet.setLightVendorHost(conf.hub);
 
@@ -18,6 +19,7 @@ eventBus.once('connected', function(ws){
 });
 
 const bounce_fees = 10000;
+let apiIsStarted = false;
 
 async function treatResponseFromOswapAA(objResponse, objInfos){
 
@@ -142,6 +144,11 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 
 		api.refreshMarket(asset1, asset0);
 	}
+
+	if(apiIsStarted) {
+		const d = new Date();
+		await dumpByAddress(formatDate(d), oswapAaAddress);
+	}
 }
 
 
@@ -190,7 +197,11 @@ async function start(){
 	addWatchedAas();
 	eventBus.on('connected', addWatchedAas);
 	lightWallet.refreshLightClientHistory();
-	eventBus.once('refresh_light_done', api.start);
+	eventBus.once('refresh_light_done', async () => {
+		apiIsStarted = true;
+		await initHistoryAABalances();
+		await api.start()
+	});
 	initPriceDumpService()
 }
 
@@ -204,12 +215,7 @@ function initPriceDumpService() {
 }
 
 async function startDump() {
-	let oswapAAs = await db.query("SELECT address FROM oswap_aas");
-	oswapAAs = oswapAAs.map(row => row.address);
-	const d = new Date();
-	d.setUTCDate(d.getUTCDate() - 1);
-	const date = d.getUTCFullYear() + '-' + addZero(d.getUTCMonth() + 1) + '-' + addZero(d.getUTCDate()) + ' 23:59:59'
-	await dump(date, oswapAAs);
+	await initHistoryAABalances();
 	initPriceDumpService();
 }
 
