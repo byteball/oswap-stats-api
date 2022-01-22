@@ -5,6 +5,7 @@ const cors = require('cors');
 const mutex = require('ocore/mutex.js');
 const addZero = require('./helpers/addZero');
 const getBalancesByAddress = require('./helpers/getBalancesByAddress');
+const updateBalancesForOneAddress = require('./updateBalancesForOneAddress')
 const exchangeRates = require('./rates');
 
 const assocTickersByAssets = {};
@@ -347,7 +348,7 @@ async function makeCandleForPair(table_name, start_timestamp, end_timestamp, bas
 	VALUES (?,?,?,?,?,?,?,?,?,?)",[ base, quote, aa_address, quote_volume, base_volume, high, low, open_price, close_price,start_timestamp]);
 }
 
-async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time) {
+async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time, is_repeat) {
 	start_time.setUTCHours(0, 0, 0);
 	const start = start_time.getUTCFullYear() + '-' + addZero(start_time.getUTCMonth() +1) + '-' + addZero(start_time.getUTCDate())+' 00:00:00';
 	const end = end_time.getUTCFullYear() + '-' + addZero(end_time.getUTCMonth() +1) + '-' + addZero(end_time.getUTCDate())+' 23:59:59';
@@ -360,10 +361,13 @@ async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_ti
 				balance_date: row.balance_date
 			}
 		}
-		if(row.asset === null) row.asset = 'GBYTE';
 		assocDateToBalances[row.balance_date][row.asset] = row.balance;
 	})
-
+	
+	if(!assocDateToBalances[end] && !is_repeat) {
+		await updateBalancesForOneAddress(address);
+		return calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time, true);
+	}
 	return Object.values(assocDateToBalances)
 }
 

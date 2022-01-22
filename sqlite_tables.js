@@ -85,7 +85,7 @@ exports.create = async function(){
 
 	await db.query("CREATE TABLE IF NOT EXISTS oswap_aa_balances ( \n\
     address CHAR(32) NOT NULL, \n\
-    asset CHAR(44) DEFAULT NULL, \n\
+    asset CHAR(44) NOT NULL, \n\
     balance BIGINT NOT NULL, \n\
     balance_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\
     PRIMARY KEY (address, asset, balance_date))")

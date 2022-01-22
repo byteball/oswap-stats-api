@@ -9,7 +9,7 @@ const sqlite_tables = require('./sqlite_tables.js');
 const db = require('ocore/db.js');
 const api = require('./api.js');
 const initHistoryAABalances = require('./initHistoryAABalances');
-const { dumpByAddress } = require('./dumpFunction');
+const { dumpByAddress } = require('./dumpFunctions');
 const formatDate = require('./helpers/formatDate');
 
 lightWallet.setLightVendorHost(conf.hub);
