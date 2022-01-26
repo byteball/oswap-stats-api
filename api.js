@@ -6,7 +6,7 @@ const mutex = require('ocore/mutex.js');
 const addZero = require('./helpers/addZero');
 const getBalancesByAddress = require('./helpers/getBalancesByAddress');
 const updateBalancesForOneAddress = require('./updateBalancesForOneAddress')
-const exchangeRates = require('./rates');
+const getExchangeRates = require('./rates');
 
 const assocTickersByAssets = {};
 const assocTickersByMarketNames = {};
@@ -392,18 +392,18 @@ function getMarketcap(balances, asset0, asset1) {
 
 	if (base) {
 		assetValue0 = assetValue1 =
-			(exchangeRates.GBYTE_USD / 1e9) * base;
+			(getExchangeRates().GBYTE_USD / 1e9) * base;
 	} else {
 		const assetId0 = asset0 === "base" ? "GBYTE" : asset0;
 		const assetId1 = asset1 === "base" ? "GBYTE" : asset1;
 		const assetInfo0 = assocAssets[asset0];
 		const assetInfo1 = assocAssets[asset1];
-		assetValue0 = exchangeRates[`${assetId0}_USD`]
-			? exchangeRates[`${assetId0}_USD`] *
+		assetValue0 = getExchangeRates()[`${assetId0}_USD`]
+			? getExchangeRates()[`${assetId0}_USD`] *
 			assetValue(balances[assetId0], assetInfo0)
 			: 0;
-		assetValue1 = exchangeRates[`${assetId1}_USD`]
-			? exchangeRates[`${assetId1}_USD`] *
+		assetValue1 = getExchangeRates()[`${assetId1}_USD`]
+			? getExchangeRates()[`${assetId1}_USD`] *
 			assetValue(balances[assetId1], assetInfo1)
 			: 0;
 	}
@@ -416,11 +416,11 @@ async function getAPY7d(startTime, endTime, quote_id, base_id, balances, fee) {
 
 	let asset = quote_id === 'base' ? 'GBYTE' : quote_id;
 	let type = "quote";
-	let rate = exchangeRates[`${asset}_USD`];
+	let rate = getExchangeRates()[`${asset}_USD`];
 	if (!rate) {
 		asset = base_id === 'base' ? 'GBYTE' : base_id;
 		type = "base";
-		rate = exchangeRates[`${asset}_USD`];
+		rate = getExchangeRates()[`${asset}_USD`];
 	}
 
 	const earning7d = candles
@@ -563,7 +563,7 @@ async function start(){
 	});
 
 	app.get('/api/v1/exchangeRates', async function (request, response) {
-		response.send(exchangeRates);
+		response.send(getExchangeRates());
 	});
 
 	app.get('/api/v1/history/:address', async function (request, response) {
