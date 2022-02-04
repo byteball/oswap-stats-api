@@ -6,13 +6,13 @@ async function getAllAAs() {
   return rows.map(r => r.address);
 }
 
-async function getSyncStartDataForAAs(aas) {
+async function getSyncStartDateForAAs(aas) {
   const assocAAtoDate = {}
-  for (let n in aas) {
+  for (let aa of aas) {
     const rows = await db.query(
       "SELECT balance_date FROM oswap_aa_balances WHERE address = ? ORDER BY balance_date DESC LIMIT 1",
-      [aas[n]]);
-    assocAAtoDate[aas[n]] = rows.length ? rows[0].balance_date : null;
+      [aa]);
+    assocAAtoDate[aa] = rows.length ? rows[0].balance_date : null;
   }
   return assocAAtoDate;
 }
@@ -62,4 +62,4 @@ async function dumpByAddress(date, address) {
   }
 }
 
-module.exports = { getAllAAs, getSyncStartDataForAAs, fillAABalances, dumpByAddress };
+module.exports = { getAllAAs, getSyncStartDateForAAs, fillAABalances, dumpByAddress };

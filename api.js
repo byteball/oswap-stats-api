@@ -28,9 +28,9 @@ var bRefreshing = false;
 
 async function initMarkets(){
 	await initAssetsCache();
-	const rows = await db.query('SELECT DISTINCT base,quote FROM trades');
-	for (var i=0; i < rows.length; i++){
-		await refreshMarket(rows[i].base, rows[i].quote)
+	const rows = await db.query('SELECT address, asset_0, asset_1 FROM oswap_aas');
+	for (let i=0; i < rows.length; i++){
+		await refreshMarket(rows[i].address, rows[i].asset_1, rows[i].asset_0)
 	}
 }
 
@@ -70,15 +70,24 @@ function getMarketNameSeparator(){
 	return "-";
 }
 
+function getMarketName(address, baseSymbol, quoteSymbol) {
+	return address + getMarketNameSeparator() + baseSymbol + getMarketNameSeparator() + quoteSymbol;
+}
+
+function getKeyName(address, base, quote) {
+	return address + '-' + base + '-' + quote;
+}
+
 function getDecimalsPriceCoefficient(base, quote){
 	return 10 ** (assocAssets[base].decimals - assocAssets[quote].decimals);
 }
 
-async function createTicker(base, quote){
+async function createTicker(address, base, quote){
 	if (assocAssets[base] && assocAssets[quote]){
 
-		const market_name = assocAssets[base].symbol + getMarketNameSeparator() + assocAssets[quote].symbol
+		const market_name = getMarketName(address, assocAssets[base].symbol, assocAssets[quote].symbol);
 		const ticker = {
+			address,
 			market_name,
 			quote_symbol: assocAssets[quote].symbol,
 			base_symbol: assocAssets[base].symbol,
@@ -86,31 +95,31 @@ async function createTicker(base, quote){
 			base_id: base,
 		};
 
-		assocTickersByAssets[base + "_" + quote] = ticker;
+		assocTickersByAssets[getKeyName(address, base, quote)] = ticker;
 		assocTickersByMarketNames[market_name] = ticker;
 
 		const trades = [];
-		assocTradesByAssets[base + "_" + quote] = trades;
+		assocTradesByAssets[getKeyName(address, base, quote)] = trades;
 		assocTradesByMarketNames[market_name] = trades;
 		return true;
 	}
 	else {
-		delete assocTickersByAssets[base + "_" + quote]; // we remove from api any ticker that has lost a symbol
+		delete assocTickersByAssets[getKeyName(address, base, quote)]; // we remove from api any ticker that has lost a symbol
 		return false;
 	}
 }
 
-async function refreshMarket(base, quote){
-	const unlock = await mutex.lockOrSkip(['refresh_' + base + '-' + quote]);
+async function refreshMarket(address, base, quote){
+	const unlock = await mutex.lockOrSkip(['refresh_' + address]);
 	if (!unlock)
 		return;
 	bRefreshing = true;
 	await refreshAsset(base);
 	await refreshAsset(quote);
-	if (await createTicker(base, quote)){
-		await refreshTrades(base, quote);
-		await refreshTicker(base, quote);
-		await makeNextCandlesForMarket(base, quote);
+	if (await createTicker(address, base, quote)){
+		await refreshTrades(address, base, quote);
+		await refreshTicker(address, base, quote);
+		await makeNextCandlesForMarket(address, base, quote);
 	} else
 		console.log("symbol missing");
 	bRefreshing = false;
@@ -129,14 +138,12 @@ function getOneDayAgoDate() {
 }
 
 
-async function refreshTrades(base, quote){
-	const ticker = assocTickersByAssets[base + "_" + quote];
+async function refreshTrades(address, base, quote){
+	const ticker = assocTickersByAssets[getKeyName(address, base, quote)];
 	if (!ticker)
-		return console.log(base + "_" + quote + " not found in assocTickersByAssets")
-
-	const address = await getTheMostVoluminousAddress(base, quote);
-
-	const trades = assocTradesByAssets[base + "_" + quote];
+		return console.log(getKeyName(address, base, quote) + " not found in assocTickersByAssets")
+	
+	const trades = assocTradesByAssets[getKeyName(address, base, quote)];
 
 	trades.length = 0; // we clear array without deferencing it
 
@@ -144,7 +151,7 @@ async function refreshTrades(base, quote){
 	WHERE timestamp > ? AND quote=? AND base=? AND aa_address=? ORDER BY timestamp DESC", [getOneDayAgoDate(), quote, base, address]);
 	rows.forEach(function(row){
 		trades.push({
-			market_name: ticker.base_symbol + getMarketNameSeparator() + ticker.quote_symbol,
+			market_name: getMarketName(address, ticker.base_symbol, ticker.quote_symbol),
 			price: row.price * getDecimalsPriceCoefficient(base, quote),
 			base_volume: row.base_volume / 10 ** assocAssets[base].decimals,
 			quote_volume: row.quote_volume / 10 ** assocAssets[quote].decimals,
@@ -158,45 +165,10 @@ async function refreshTrades(base, quote){
 
 }
 
-async function getTheMostVoluminousAddress(base, quote) {
-	const addresses = await db.query("SELECT DISTINCT aa_address FROM trades WHERE base=? AND quote=?", [base, quote]);
-
-	if(addresses.length === 1) {
-		return addresses[0].aa_address;
-	}
-
-	let balances = [];
-
-	const query = `SELECT address, asset, SUM(amount) AS balance FROM outputs
- JOIN units USING(unit) WHERE is_spent=0
-  AND is_stable=1 AND address=?
-   AND asset${base === 'base' ? ' IS NULL' : '=?'}
-    AND sequence='good' GROUP BY address, asset`;
-
-	for (let i = 0; i < addresses.length; i++) {
-		const params = [addresses[i].aa_address];
-
-		if(base !== 'base') {
-			params.push(base)
-		}
-
-		const rows = await db.query(query, params);
-
-		if(rows.length) {
-			balances.push(rows[0]);
-		}
-	}
-
-	const max = balances.reduce((prev, current) => (prev.balance > current.balance) ? prev : current);
-	return max.address;
-}
-
-async function refreshTicker(base, quote){
-	const ticker = assocTickersByAssets[base + "_" + quote];
+async function refreshTicker(address, base, quote){
+	const ticker = assocTickersByAssets[getKeyName(address, base, quote)];
 	if (!ticker)
-		return console.log(base + "_" + quote + " not found in assocTickersByAssets")
-
-	const address = await getTheMostVoluminousAddress(base, quote);
+		return console.log(getKeyName(address, base, quote) + " not found in assocTickersByAssets")
 	
 	const date = getOneDayAgoDate();
 
@@ -210,7 +182,7 @@ async function refreshTicker(base, quote){
 	if (rows[0])
 		ticker.highest_price_24h = rows[0].high * getDecimalsPriceCoefficient(base, quote);
 	else
-		delete ticker.highest_price_24h * getDecimalsPriceCoefficient(base, quote);
+		delete ticker.highest_price_24h;
 
 	rows = await db.query("SELECT quote_qty*1.0/base_qty AS last_price FROM trades WHERE quote=? AND base=? ORDER BY timestamp DESC LIMIT 1",[quote, base]);
 	if (rows[0])
@@ -237,16 +209,14 @@ async function refreshTicker(base, quote){
 
 
 
-async function makeNextCandlesForMarket(base, quote){
-	await makeNextHourlyCandlesForMarket(base, quote, true);
-	await makeNextDailyCandlesForMarket(base, quote, true);
+async function makeNextCandlesForMarket(address, base, quote){
+	await makeNextHourlyCandlesForMarket(address, base, quote, true);
+	await makeNextDailyCandlesForMarket(address, base, quote, true);
 }
 
-async function makeNextDailyCandlesForMarket(base, quote, bReplaceLastCandle){
+async function makeNextDailyCandlesForMarket(address, base, quote, bReplaceLastCandle){
 	var last_start_timestamp,last_end_timestamp,next_end_timestamp;
-
-	const address = await getTheMostVoluminousAddress(base, quote);
-
+	
 	const candles = await db.query("SELECT start_timestamp AS last_start_timestamp, \n\
 	strftime('%Y-%m-%dT%H:00:00.000Z', start_timestamp, '+24 hours') AS last_end_timestamp, \n\
 	strftime('%Y-%m-%dT%H:00:00.000Z', start_timestamp, '+48 hours') AS next_end_timestamp \n\
@@ -275,15 +245,13 @@ async function makeNextDailyCandlesForMarket(base, quote, bReplaceLastCandle){
 	else
 		await makeCandleForPair('daily_candles', last_end_timestamp, next_end_timestamp, base, quote, address);
 
-	await makeNextDailyCandlesForMarket(base, quote);
+	await makeNextDailyCandlesForMarket(address, base, quote);
 }
 
 
-async function makeNextHourlyCandlesForMarket(base, quote, bReplaceLastCandle){
+async function makeNextHourlyCandlesForMarket(address, base, quote, bReplaceLastCandle){
 	var last_start_timestamp,last_end_timestamp,next_end_timestamp;
-
-	const address = await getTheMostVoluminousAddress(base, quote);
-
+	
 	const candles = await db.query("SELECT start_timestamp AS last_start_timestamp, \n\
 	strftime('%Y-%m-%dT%H:00:00.000Z', start_timestamp, '+1 hour') AS last_end_timestamp, \n\
 	strftime('%Y-%m-%dT%H:00:00.000Z', start_timestamp, '+2 hours') AS next_end_timestamp \n\
@@ -308,7 +276,7 @@ async function makeNextHourlyCandlesForMarket(base, quote, bReplaceLastCandle){
 	else
 		await makeCandleForPair('hourly_candles', last_end_timestamp, next_end_timestamp, base, quote, address);
 
-	await makeNextHourlyCandlesForMarket(base, quote);
+	await makeNextHourlyCandlesForMarket(address, base, quote);
 
 }
 
@@ -349,7 +317,6 @@ async function makeCandleForPair(table_name, start_timestamp, end_timestamp, bas
 }
 
 async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time, is_repeat) {
-	start_time.setUTCHours(0, 0, 0);
 	const start = start_time.getUTCFullYear() + '-' + addZero(start_time.getUTCMonth() +1) + '-' + addZero(start_time.getUTCDate())+' 00:00:00';
 	const end = end_time.getUTCFullYear() + '-' + addZero(end_time.getUTCMonth() +1) + '-' + addZero(end_time.getUTCDate())+' 23:59:59';
 	const rows = await db.query("SELECT * FROM oswap_aa_balances WHERE address = ? \n\
@@ -371,9 +338,7 @@ async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_ti
 	return Object.values(assocDateToBalances)
 }
 
-async function getCandles(period, start_time, end_time, quote_id, base_id) {
-	const address = await getTheMostVoluminousAddress(base_id, quote_id);
-
+async function getCandles(period, start_time, end_time, quote_id, base_id, address) {
 	return db.query("SELECT quote_qty AS quote_volume,base_qty AS base_volume,highest_price,lowest_price,open_price,close_price,start_timestamp\n\
 		FROM " + period + "_candles WHERE start_timestamp>=? AND start_timestamp<? AND quote=? AND base=? AND aa_address=?",
 		[start_time.toISOString(), end_time.toISOString(), quote_id, base_id, address])
@@ -410,8 +375,11 @@ function getMarketcap(balances, asset0, asset1) {
 	return assetValue0 && assetValue1 ? assetValue0 + assetValue1 : 0;
 }
 
-async function getAPY7d(startTime, endTime, quote_id, base_id, balances, fee) {
-	const candles = await getCandles('daily', startTime, endTime, quote_id, base_id);
+async function getAPY7d(endTime, quote_id, base_id, address, balances, fee) {
+	const startTime = new Date(endTime);
+	startTime.setUTCDate(startTime.getUTCDate() - 7);
+
+	const candles = await getCandles('daily', startTime, endTime, quote_id, base_id, address);
 	const marketCap = getMarketcap(balances, quote_id, base_id);
 
 	let asset = quote_id === 'base' ? 'GBYTE' : quote_id;
@@ -510,7 +478,8 @@ async function start(){
 		if (assocTickersByMarketNames[marketName]){
 			await waitUntilRefreshFinished();
 
-		const rows = await getCandles(period, start_time, end_time, assocTickersByMarketNames[marketName].quote_id, assocTickersByMarketNames[marketName].base_id);
+		const ticker = assocTickersByMarketNames[marketName];	
+		const rows = await getCandles(period, start_time, end_time, ticker.quote_id, ticker.base_id, ticker.address);
 		return response.send(rows);
 		}
 		else
@@ -531,30 +500,27 @@ async function start(){
 	});
 
 	app.get('/api/v1/apy7d', async function (request, response) {
-		const startTime = new Date();
-		startTime.setUTCDate(startTime.getUTCDate() - 7);
 		const endTime = new Date();
-		endTime.setDate(endTime.getUTCDate() + 1);
+		endTime.setUTCHours(0, 0, 0, 0);
 
 		const assocAPYByMarketName = {};
 
 		for (let key in assocTickersByMarketNames) {
 			const q = assocTickersByMarketNames[key];
-
-			const address = await getTheMostVoluminousAddress(q.base_id, q.quote_id);
-
+			
 			const rows = await db.query("SELECT fee FROM oswap_aas WHERE address=?",
-				[address]);
+				[q.address]);
 
 			if (!rows.length) {
-				assocAPYByMarketName[key] = 0
+				assocAPYByMarketName[q.address] = 0
 			} else {
 				const fee = rows[0].fee / 10 ** 11;
-				const balances = await getBalancesByAddress(address);
-				assocAPYByMarketName[key] = await getAPY7d(startTime,
+				const balances = await getBalancesByAddress(q.address);
+				assocAPYByMarketName[q.address] = await getAPY7d(
 					endTime,
 					q.quote_id,
 					q.base_id,
+					q.address,
 					balances,
 					fee);
 			}

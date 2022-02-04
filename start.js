@@ -202,10 +202,10 @@ async function start(){
 		await initHistoryAABalances();
 		await api.start()
 	});
-	initPriceDumpService()
+	initBalanceDumpService()
 }
 
-function initPriceDumpService() {
+function initBalanceDumpService() {
 	const nowDate = new Date();
 	const nextDate = new Date();
 	nextDate.setUTCHours(0, 1, 0);
@@ -216,7 +216,7 @@ function initPriceDumpService() {
 
 async function startDump() {
 	await initHistoryAABalances();
-	initPriceDumpService();
+	initBalanceDumpService();
 }
 
 function discoverOswapAas(){
