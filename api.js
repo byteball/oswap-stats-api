@@ -14,6 +14,8 @@ const assocTickersByMarketNames = {};
 const assocTradesByAssets = {};
 const assocTradesByMarketNames = {};
 
+const assocIdsByMarketNames = {}
+
 var assocAssets = {};
 var assocAssetsBySymbols = {};
 
@@ -70,7 +72,7 @@ function getMarketNameSeparator(){
 	return "-";
 }
 
-function getMarketName(address, baseSymbol, quoteSymbol) {
+function getFullMarketName(address, baseSymbol, quoteSymbol) {
 	return address + getMarketNameSeparator() + baseSymbol + getMarketNameSeparator() + quoteSymbol;
 }
 
@@ -85,9 +87,19 @@ function getDecimalsPriceCoefficient(base, quote){
 async function createTicker(address, base, quote){
 	if (assocAssets[base] && assocAssets[quote]){
 
-		const market_name = getMarketName(address, assocAssets[base].symbol, assocAssets[quote].symbol);
+		const full_market_name = getFullMarketName(address, assocAssets[base].symbol, assocAssets[quote].symbol);
+		const market_name = assocAssets[base].symbol + getMarketNameSeparator() + assocAssets[quote].symbol;
+		
+		if(!assocIdsByMarketNames[market_name]) {
+			assocIdsByMarketNames[market_name] = {
+				base_id: base,
+				quote_id: quote,
+			}
+		}
+		
 		const ticker = {
 			address,
+			full_market_name: full_market_name,
 			market_name,
 			quote_symbol: assocAssets[quote].symbol,
 			base_symbol: assocAssets[base].symbol,
@@ -96,11 +108,11 @@ async function createTicker(address, base, quote){
 		};
 
 		assocTickersByAssets[getKeyName(address, base, quote)] = ticker;
-		assocTickersByMarketNames[market_name] = ticker;
+		assocTickersByMarketNames[full_market_name] = ticker;
 
 		const trades = [];
 		assocTradesByAssets[getKeyName(address, base, quote)] = trades;
-		assocTradesByMarketNames[market_name] = trades;
+		assocTradesByMarketNames[full_market_name] = trades;
 		return true;
 	}
 	else {
@@ -151,7 +163,8 @@ async function refreshTrades(address, base, quote){
 	WHERE timestamp > ? AND quote=? AND base=? AND aa_address=? ORDER BY timestamp DESC", [getOneDayAgoDate(), quote, base, address]);
 	rows.forEach(function(row){
 		trades.push({
-			market_name: getMarketName(address, ticker.base_symbol, ticker.quote_symbol),
+			full_market_name: getFullMarketName(address, ticker.base_symbol, ticker.quote_symbol),
+			market_name: ticker.base_symbol + getMarketNameSeparator() + ticker.quote_symbol,
 			price: row.price * getDecimalsPriceCoefficient(base, quote),
 			base_volume: row.base_volume / 10 ** assocAssets[base].decimals,
 			quote_volume: row.quote_volume / 10 ** assocAssets[quote].decimals,
@@ -408,6 +421,67 @@ async function getPoolHistory(address) {
 	return db.query("SELECT * FROM pool_history WHERE aa_address=? ORDER BY timestamp DESC LIMIT 20", [address]);
 }
 
+async function getTheMostLiquidAddress(marketName) {
+	if (assocIdsByMarketNames[marketName]) {
+		const {base_id, quote_id} = assocIdsByMarketNames[marketName];
+		let bestAddressData = {address: false, balance: 0}
+		const rows = await db.query("SELECT address FROM oswap_aas WHERE asset_0=? AND asset_1=?", [quote_id, base_id]);
+		for (let row of rows) {
+			const lRows = await db.query("SELECT balance FROM oswap_aa_balances WHERE address=? AND asset=? \
+				ORDER BY balance_date DESC LIMIT 1", [row.address, quote_id === 'base' ? 'GBYTE' : quote_id]);
+
+			if (lRows.length) {
+				if (lRows[0].balance > bestAddressData.balance) {
+					bestAddressData = {
+						address: row.address,
+						balance: lRows[0].balance,
+					}
+				}
+			}
+		}
+		if (!bestAddressData.address) return false;
+		return bestAddressData.address;
+	}
+	return false;
+}
+
+async function sendTickerByFullMarketName(fullMarketName, response) {
+	if (fullMarketName && assocTickersByMarketNames[fullMarketName]){
+		await waitUntilRefreshFinished();
+		return response.send(assocTickersByMarketNames[fullMarketName]);
+	}
+	else
+		return response.status(400).send('Unknown market');
+}
+
+async function sendTradesByFullMarketName(fullMarketName, response) {
+	if (fullMarketName && assocTradesByMarketNames[fullMarketName]){
+		await waitUntilRefreshFinished();
+		return response.send(assocTradesByMarketNames[fullMarketName]);
+	}
+	else
+		return response.status(400).send('Unknown market');
+}
+
+async function sendCandlesByFullMarketName(fullMarketName, period, start_time, end_time, response) {
+	if (!start_time)
+		return response.status(400).send('start_time not valid');
+	if (!end_time)
+		return response.status(400).send('end_time not valid');
+
+	if (period !== 'hourly' && period !== 'daily')
+		return response.status(400).send('period must be "daily" or "hourly"');
+	if (assocTickersByMarketNames[fullMarketName]){
+		await waitUntilRefreshFinished();
+
+		const ticker = assocTickersByMarketNames[fullMarketName];
+		const rows = await getCandles(period, start_time, end_time, ticker.quote_id, ticker.base_id, ticker.address);
+		return response.send(rows);
+	}
+	else
+		return response.status(400).send('Unknown market');
+}
+
 let started = false;
 
 async function start(){
@@ -444,46 +518,50 @@ async function start(){
 
 	app.get('/api/v1/ticker/:marketName', async function(request, response){
 		const marketName = request.params.marketName;
-		if (assocTickersByMarketNames[marketName]){
-			await waitUntilRefreshFinished();
-			return response.send(assocTickersByMarketNames[marketName]);
-		}
-		else
-			return response.status(400).send('Unknown market');
+		const address = await getTheMostLiquidAddress(marketName);
+		const fullMarketName = address ? address + getMarketNameSeparator() + marketName : false;
+
+		await sendTickerByFullMarketName(fullMarketName, response)
+	});
+	
+	app.get('/api/v1/ticker_by_full_market_name/:fullMarketName', async function(request, response){
+		const fullMarketName = request.params.fullMarketName;
+
+		await sendTickerByFullMarketName(fullMarketName, response)
 	});
 
 	app.get('/api/v1/trades/:marketName', async function(request, response){
 		const marketName = request.params.marketName;
-		if (assocTradesByMarketNames[marketName]){
-			await waitUntilRefreshFinished();
-			return response.send(assocTradesByMarketNames[marketName]);
-		}
-		else
-			return response.status(400).send('Unknown market');
+		const address = await getTheMostLiquidAddress(marketName);
+		const fullMarketName = address ? address + getMarketNameSeparator() + marketName : false;
+		
+		await sendTradesByFullMarketName(fullMarketName, response);
+	});
+
+	app.get('/api/v1/trades_by_full_market_name/:fullMarketName', async function(request, response){
+		const fullMarketName = request.params.fullMarketName;
+		
+		await sendTradesByFullMarketName(fullMarketName, response);
 	});
 
 	app.get('/api/v1/candles/:marketName', async function(request, response){
 		const marketName = request.params.marketName;
+		const address = await getTheMostLiquidAddress(marketName);
+		const fullMarketName = address + getMarketNameSeparator() + marketName;
 		const period = request.query.period;
 		const start_time = parseDateTime(request.query.start);
 		const end_time = parseDateTime(request.query.end, true);
+		
+		await sendCandlesByFullMarketName(fullMarketName, period, start_time, end_time, response);
+	});
 
-		if (!start_time)
-			return response.status(400).send('start_time not valid');
-		if (!end_time)
-			return response.status(400).send('end_time not valid');
-
-		if (period !== 'hourly' && period !== 'daily')
-			return response.status(400).send('period must be "daily" or "hourly"');
-		if (assocTickersByMarketNames[marketName]){
-			await waitUntilRefreshFinished();
-
-		const ticker = assocTickersByMarketNames[marketName];	
-		const rows = await getCandles(period, start_time, end_time, ticker.quote_id, ticker.base_id, ticker.address);
-		return response.send(rows);
-		}
-		else
-			return response.status(400).send('Unknown market');
+	app.get('/api/v1/candles_by_full_market_name/:fullMarketName', async function(request, response){
+		const fullMarketName = request.params.fullMarketName;
+		const period = request.query.period;
+		const start_time = parseDateTime(request.query.start);
+		const end_time = parseDateTime(request.query.end, true);
+		
+		await sendCandlesByFullMarketName(fullMarketName, period, start_time, end_time, response);
 	});
 
 	app.get('/api/v1/balances/:address', async function (request, response) {
