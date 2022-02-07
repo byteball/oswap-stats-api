@@ -14,7 +14,7 @@ exports.create = async function(){
 		open_price REAL, \n\
 		close_price REAL, \n\
 		start_timestamp TIMESTAMP NOT NULL, \n\
-		UNIQUE (base, quote, start_timestamp)\n\
+		UNIQUE (aa_address, base, quote, start_timestamp)\n\
 	)");
 
 	await db.query("CREATE TABLE IF NOT EXISTS daily_candles (\n\
@@ -28,7 +28,7 @@ exports.create = async function(){
 		open_price REAL, \n\
 		close_price REAL, \n\
 		start_timestamp TIMESTAMP NOT NULL, \n\
-		UNIQUE (base, quote, start_timestamp)\n\
+		UNIQUE (aa_address, base, quote, start_timestamp)\n\
 	)");
 
 	await db.query("CREATE TABLE IF NOT EXISTS trades (\n\

@@ -10,9 +10,14 @@ async function getSyncStartDateForAAs(aas) {
   const assocAAtoDate = {}
   for (let aa of aas) {
     const rows = await db.query(
-      "SELECT balance_date FROM oswap_aa_balances WHERE address = ? ORDER BY balance_date DESC LIMIT 1",
+      "SELECT balance_date FROM oswap_aa_balances WHERE address = ? ORDER BY balance_date DESC LIMIT 30",
       [aa]);
-    assocAAtoDate[aa] = rows.length ? rows[0].balance_date : null;
+    
+    if(rows.length && rows.length === 30) {
+      assocAAtoDate[aa] = rows[0].balance_date;
+    } else {
+      assocAAtoDate[aa] = null
+    }
   }
   return assocAAtoDate;
 }
