@@ -8,6 +8,9 @@ const objectHash = require('ocore/object_hash.js');
 const sqlite_tables = require('./sqlite_tables.js');
 const db = require('ocore/db.js');
 const api = require('./api.js');
+const initHistoryAABalances = require('./initHistoryAABalances');
+const { dumpByAddress } = require('./dumpFunctions');
+const formatDate = require('./helpers/formatDate');
 
 lightWallet.setLightVendorHost(conf.hub);
 
@@ -16,11 +19,13 @@ eventBus.once('connected', function(ws){
 });
 
 const bounce_fees = 10000;
+let apiIsStarted = false;
 
 async function treatResponseFromOswapAA(objResponse, objInfos){
 
 	const oswapAaAddress = objInfos.address;
 	const oswap_asset = objInfos.swap_asset;
+
 	const asset0 = objInfos.asset_0;
 	const asset1 = objInfos.asset_1;
 
@@ -37,6 +42,7 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 		const timestamp = new Date(objResponseUnit.timestamp * 1000).toISOString();
 		var asset0_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, asset0);
 		var asset1_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, asset1); 
+
 		if (asset0_amount > 0 && asset1 == 'base' && asset1_amount == bounce_fees)
 			asset1_amount -= bounce_fees;
 		if (asset1_amount > 0 && asset0 == 'base' && asset0_amount == bounce_fees)
@@ -48,15 +54,20 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 		const supply = oswapAaVars.supply;
 
 		if (asset0_amount > 0){
-			await db.query("INSERT INTO trades (response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?)", 
-			[objResponse.response_unit, asset0, oswap_asset, asset0_amount, asset1_amount > 0 ? oswap_asset_amount / 2 : oswap_asset_amount, 'sell', timestamp]);
+			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
+			[oswapAaAddress, objResponse.response_unit, asset0, oswap_asset, asset0_amount, asset1_amount > 0 ? oswap_asset_amount / 2 : oswap_asset_amount, 'sell', timestamp]);
 			api.refreshMarket(asset0, oswap_asset);
 		}
+
 		if (asset1_amount > 0){
-			await db.query("INSERT INTO trades (response_unit, base, quote, base_qty, quote_qty, type, timestamp,indice) VALUES (?,?,?,?,?,?,?,1)", 
-			[objResponse.response_unit, asset1, oswap_asset, asset1_amount, asset0_amount > 0 ? oswap_asset_amount / 2 : oswap_asset_amount, 'sell', timestamp]);
+			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp, indice) VALUES (?,?,?,?,?,?,?,?,1)", 
+			[oswapAaAddress, objResponse.response_unit, asset1, oswap_asset, asset1_amount, asset0_amount > 0 ? oswap_asset_amount / 2 : oswap_asset_amount, 'sell', timestamp]);
 			api.refreshMarket(asset1, oswap_asset);
 		}
+
+		await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
+		[oswapAaAddress, objResponse.response_unit, objResponse.trigger_unit, objResponse.trigger_address, asset1, asset0, asset1_amount, asset0_amount, 'mint', timestamp]);
+
 		await saveSupplyForAsset(oswap_asset, supply);
 	}
 
@@ -67,7 +78,6 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 			throw Error('trigger unit not found ' + objResponse.trigger_unit);
 	
 	
-
 		const objResponseUnit = await getJointFromStorageOrHub(objResponse.response_unit);
 		if (!objResponseUnit)
 			throw Error('response unit not found ' + objResponse.trigger_unit);
@@ -82,15 +92,20 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 		const supply = oswapAaVars.supply;
 
 		if (asset0_amount > 0){
-			await db.query("INSERT INTO trades (response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?)", 
-			[objResponse.response_unit, asset0, oswap_asset, asset0_amount, oswap_asset_amount / 2, 'buy', timestamp]);
+			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
+			[oswapAaAddress, objResponse.response_unit, asset0, oswap_asset, asset0_amount, oswap_asset_amount / 2, 'buy', timestamp]);
 			api.refreshMarket(asset0, oswap_asset);
 		}
+
 		if (asset1_amount > 0){
-			await db.query("INSERT INTO trades (response_unit, base, quote, base_qty, quote_qty, type, timestamp,indice) VALUES (?,?,?,?,?,?,?,1)", 
-			[objResponse.response_unit, asset1, oswap_asset, asset1_amount, oswap_asset_amount / 2, 'buy', timestamp]);
+			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp, indice) VALUES (?,?,?,?,?,?,?,?,1)", 
+			[oswapAaAddress, objResponse.response_unit, asset1, oswap_asset, asset1_amount, oswap_asset_amount / 2, 'buy', timestamp]);
 			api.refreshMarket(asset1, oswap_asset);
 		}
+
+		await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
+		[oswapAaAddress, objResponse.response_unit, objResponse.trigger_unit, objResponse.trigger_address, asset1, asset0, asset1_amount, asset0_amount, 'burn', timestamp]);
+
 		await saveSupplyForAsset(oswap_asset, supply);
 	}
 
@@ -113,14 +128,27 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 		const asset1_amount_out = objResponse.response.responseVars.asset1_amount || 0;
 
 		if (asset0_amount_out > 0){
-			await db.query("INSERT INTO trades (response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?)", 
-			[objResponse.response_unit, asset1, asset0, asset1_amount_in, asset0_amount_out, 'sell', timestamp]);
+			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
+			[oswapAaAddress, objResponse.response_unit, asset1, asset0, asset1_amount_in, asset0_amount_out, 'sell', timestamp]);
+
+			await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
+			[oswapAaAddress, objResponse.response_unit, objResponse.trigger_unit, objResponse.trigger_address, asset1, asset0, asset0_amount_out, asset1_amount_in, 'swap_out', timestamp]);
 		}
+
 		if (asset1_amount_out > 0){
-			await db.query("INSERT INTO trades (response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?)", 
-			[objResponse.response_unit, asset1, asset0, asset1_amount_out, asset0_amount_in, 'buy', timestamp]);
+			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
+			[oswapAaAddress, objResponse.response_unit, asset1, asset0, asset1_amount_out, asset0_amount_in, 'buy', timestamp]);
+
+			await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
+			[oswapAaAddress, objResponse.response_unit, objResponse.trigger_unit, objResponse.trigger_address, asset1, asset0, asset1_amount_out, asset0_amount_in, 'swap_in', timestamp]);
 		}
+
 		api.refreshMarket(asset1, asset0);
+	}
+
+	if(apiIsStarted) {
+		const d = new Date();
+		await dumpByAddress(formatDate(d), oswapAaAddress);
 	}
 }
 
@@ -170,9 +198,27 @@ async function start(){
 	addWatchedAas();
 	eventBus.on('connected', addWatchedAas);
 	lightWallet.refreshLightClientHistory();
-	api.start();
+	eventBus.once('refresh_light_done', async () => {
+		apiIsStarted = true;
+		await initHistoryAABalances();
+		await api.start()
+	});
+	initBalanceDumpService()
 }
 
+function initBalanceDumpService() {
+	const nowDate = new Date();
+	const nextDate = new Date();
+	nextDate.setUTCHours(0, 1, 0);
+	nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+	const time = nextDate.getTime() - nowDate.getTime();
+	setTimeout(startDump, time)
+}
+
+async function startDump() {
+	await initHistoryAABalances();
+	initBalanceDumpService();
+}
 
 function discoverOswapAas(){
 	return new Promise((resolve)=>{
@@ -244,13 +290,14 @@ async function saveOswapAa(objAa){
 		const oswapAaAddress = objAa.address;
 		const asset0 = objAa.definition[1].params.asset0;
 		const asset1 = objAa.definition[1].params.asset1;
+		const fee = objAa.definition[1].params.swap_fee;
 
 		const factoryAaVars = await getStateVarsForPrefix(conf.factory_aa, 'pools.' + oswapAaAddress + '.asset');
 		const asset = factoryAaVars['pools.' + oswapAaAddress + '.asset'];
 
 		if (!asset)
 			return setTimeout(function(){ saveOswapAa(objAa).then(resolve) }, 1000);
-		await db.query("INSERT " + db.getIgnore() + " INTO oswap_aas (address, asset_0, asset_1, swap_asset) VALUES (?,?,?,?)", [oswapAaAddress, asset0, asset1, asset]);
+		await db.query("INSERT OR REPLACE INTO oswap_aas (address, asset_0, asset_1, swap_asset, fee) VALUES (?,?,?,?,?)", [oswapAaAddress, asset0, asset1, asset, fee]);
 		await Promise.all([saveSymbolForAsset(asset), saveSymbolForAsset(asset0), saveSymbolForAsset(asset1)]);
 		resolve();
 	})
