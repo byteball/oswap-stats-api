@@ -298,7 +298,7 @@ async function makeCandleForPair(table_name, start_timestamp, end_timestamp, bas
 	var quote_volume, base_volume = 0;
 
 	var rows = await db.query("SELECT MIN(quote_qty*1.0/base_qty) AS low,MAX(quote_qty*1.0/base_qty) AS high,SUM(quote_qty) AS quote_volume,SUM(base_qty) AS base_volume \n\
-	 FROM trades WHERE timestamp >=? AND timestamp <?  AND quote=? AND base=? AND aa_address=?",[start_timestamp, end_timestamp, quote, base, aa_address]);
+	FROM trades WHERE timestamp >=? AND timestamp <?  AND quote=? AND base=? AND aa_address=?",[start_timestamp, end_timestamp, quote, base, aa_address]);
 
 	if (rows[0] && rows[0].low){
 		low = rows[0].low * getDecimalsPriceCoefficient(base, quote);
@@ -333,7 +333,8 @@ async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_ti
 	const start = start_time.getUTCFullYear() + '-' + addZero(start_time.getUTCMonth() +1) + '-' + addZero(start_time.getUTCDate())+' 00:00:00';
 	const end = end_time.getUTCFullYear() + '-' + addZero(end_time.getUTCMonth() +1) + '-' + addZero(end_time.getUTCDate())+' 23:59:59';
 	const rows = await db.query("SELECT * FROM oswap_aa_balances WHERE address = ? \n\
-		AND balance_date >= ? AND balance_date <= ? ORDER BY balance_date ASC", [address, start, end]);
+	AND balance_date >= ? AND balance_date <= ? ORDER BY balance_date ASC", [address, start, end]);
+	
 	const assocDateToBalances = {};
 	rows.forEach(row => {
 		if(!assocDateToBalances[row.balance_date]) {
@@ -353,8 +354,8 @@ async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_ti
 
 async function getCandles(period, start_time, end_time, quote_id, base_id, address) {
 	return db.query("SELECT quote_qty AS quote_volume,base_qty AS base_volume,highest_price,lowest_price,open_price,close_price,start_timestamp\n\
-		FROM " + period + "_candles WHERE start_timestamp>=? AND start_timestamp<? AND quote=? AND base=? AND aa_address=?",
-		[start_time.toISOString(), end_time.toISOString(), quote_id, base_id, address])
+	FROM " + period + "_candles WHERE start_timestamp>=? AND start_timestamp<? AND quote=? AND base=? AND aa_address=?",
+	[start_time.toISOString(), end_time.toISOString(), quote_id, base_id, address])
 }
 
 function assetValue(value, asset) {
@@ -587,7 +588,7 @@ async function start(){
 			const q = assocTickersByMarketNames[key];
 			
 			const rows = await db.query("SELECT fee FROM oswap_aas WHERE address=?",
-				[q.address]);
+			[q.address]);
 
 			if (!rows.length) {
 				assocAPYByMarketName[q.address] = 0

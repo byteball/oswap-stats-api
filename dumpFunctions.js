@@ -10,8 +10,8 @@ async function getSyncStartDateForAAs(aas) {
 	const assocAAtoDate = {}
 	for (let aa of aas) {
 		const rows = await db.query(
-			"SELECT balance_date FROM oswap_aa_balances WHERE address = ? ORDER BY balance_date DESC LIMIT 30",
-			[aa]);
+		"SELECT balance_date FROM oswap_aa_balances WHERE address = ? ORDER BY balance_date DESC LIMIT 30",
+		[aa]);
 
 		if (rows.length && rows.length === 30) {
 			assocAAtoDate[aa] = rows[0].balance_date;
@@ -44,20 +44,20 @@ async function fillAABalances(address, startDate) {
 
 async function dumpByAddress(date, address) {
 	const rows = await db.query('SELECT outputs.address, SUM(amount) AS balance, outputs.asset \n\
-    FROM outputs \n\
-    JOIN units USING(unit) \n\
-    WHERE is_stable=1 AND sequence="good" AND creation_date<=? AND address=? \n\
-    AND NOT EXISTS ( \n\
-    SELECT 1 \n\
-    FROM inputs \n\
-    JOIN units USING(unit) \n\
-    WHERE outputs.unit=inputs.src_unit \n\
-    AND outputs.message_index=inputs.src_message_index \n\
-    AND outputs.output_index=inputs.src_output_index \n\
-    AND inputs.type="transfer" \n\
-    AND is_stable=1 AND sequence="good" \n\
-    AND creation_date<=?) \n\
-    GROUP BY address, asset', [date, address, date]);
+	FROM outputs \n\
+	JOIN units USING(unit) \n\
+	WHERE is_stable=1 AND sequence="good" AND creation_date<=? AND address=? \n\
+	AND NOT EXISTS ( \n\
+	SELECT 1 \n\
+	FROM inputs \n\
+	JOIN units USING(unit) \n\
+	WHERE outputs.unit=inputs.src_unit \n\
+	AND outputs.message_index=inputs.src_message_index \n\
+	AND outputs.output_index=inputs.src_output_index \n\
+	AND inputs.type="transfer" \n\
+	AND is_stable=1 AND sequence="good" \n\
+	AND creation_date<=?) \n\
+	GROUP BY address, asset', [date, address, date]);
 
 	console.log('DUMP BY ADDRESS::', date, address);
 	for (let row of rows) {
