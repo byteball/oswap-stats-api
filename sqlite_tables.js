@@ -82,7 +82,7 @@ exports.create = async function(){
 		asset_0 CHAR(44) NOT NULL, \n\
 		asset_1 CHAR(44) NOT NULL \n\
 	)");
-
+	
 	await db.query("CREATE TABLE IF NOT EXISTS oswap_aa_balances ( \n\
     address CHAR(32) NOT NULL, \n\
     asset CHAR(44) NOT NULL, \n\

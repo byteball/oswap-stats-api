@@ -20,7 +20,7 @@ var assocAssets = {};
 var assocAssetsBySymbols = {};
 
 const unifiedCryptoAssetIdsByAssets = {
-	base: {
+	base: { 
 		id: 1492,
 		name: 'Obyte'
 	}
@@ -61,7 +61,7 @@ function setAsset(row){
 
 	if (row.supply)
 		assocAssetsBySymbols[row.symbol].supply = row.supply / 10 ** row.decimals;
-
+		
 	if (unifiedCryptoAssetIdsByAssets[row.asset]){
 		assocAssetsBySymbols[row.symbol].unified_cryptoasset_id = unifiedCryptoAssetIdsByAssets[row.asset].id;
 		assocAssetsBySymbols[row.symbol].name = unifiedCryptoAssetIdsByAssets[row.asset].name;
@@ -132,7 +132,7 @@ async function refreshMarket(address, base, quote){
 		await refreshTrades(address, base, quote);
 		await refreshTicker(address, base, quote);
 		await makeNextCandlesForMarket(address, base, quote);
-	} else
+	} else 
 		console.log("symbol missing");
 	bRefreshing = false;
 	unlock();
