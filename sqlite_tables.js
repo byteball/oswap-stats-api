@@ -33,7 +33,7 @@ exports.create = async function(){
 
 	await db.query("CREATE TABLE IF NOT EXISTS trades (\n\
 		aa_address CHAR(32) NOT NULL, \n\
-  	response_unit CHAR(44) NOT NULL, \n\
+		response_unit CHAR(44) NOT NULL, \n\
 		indice INTEGER DEFAULT 0, \n\
 		base CHAR(44) NOT NULL, \n\
 		quote CHAR(44) NOT NULL, \n\
@@ -49,9 +49,9 @@ exports.create = async function(){
 
 	await db.query("CREATE TABLE IF NOT EXISTS pool_history (\n\
 		aa_address CHAR(32) NOT NULL, \n\
-  	response_unit CHAR(44) NOT NULL, \n\
-  	trigger_unit CHAR(44) NOT NULL, \n\
-  	trigger_address CHAR(32) NOT NULL, \n\
+		response_unit CHAR(44) NOT NULL, \n\
+		trigger_unit CHAR(44) NOT NULL, \n\
+		trigger_address CHAR(32) NOT NULL, \n\
 		base_asset CHAR(44) NOT NULL, \n\
 		quote_asset CHAR(44) NOT NULL, \n\
 		quote_qty INTEGER NOT NULL, \n\
@@ -84,11 +84,11 @@ exports.create = async function(){
 	)");
 	
 	await db.query("CREATE TABLE IF NOT EXISTS oswap_aa_balances ( \n\
-    address CHAR(32) NOT NULL, \n\
-    asset CHAR(44) NOT NULL, \n\
-    balance BIGINT NOT NULL, \n\
-    balance_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\
-    PRIMARY KEY (address, asset, balance_date))")
+		address CHAR(32) NOT NULL, \n\
+		asset CHAR(44) NOT NULL, \n\
+		balance BIGINT NOT NULL, \n\
+		balance_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\
+		PRIMARY KEY (address, asset, balance_date))")
 
 	const rows = await db.query("SELECT name FROM pragma_table_info('oswap_aas')");
 	const exists = !!rows.find(r => r.name === 'fee');
