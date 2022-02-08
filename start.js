@@ -71,7 +71,7 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 		await saveSupplyForAsset(oswap_asset, supply);
 	}
 
-	if (objResponse.response.responseVars && objResponse.response.responseVars.type == 'burn') {
+	if (objResponse.response.responseVars && objResponse.response.responseVars.type == 'burn'){
 
 		const objTriggerUnit = await storage.readUnit(objResponse.trigger_unit);
 		if (!objTriggerUnit)
