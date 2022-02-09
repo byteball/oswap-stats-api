@@ -44,8 +44,8 @@ exports.create = async function(){
 		UNIQUE (response_unit, indice)\n\
 		FOREIGN KEY (aa_address) REFERENCES oswap_aas(address)\n\
 	)");
-	await db.query("CREATE INDEX IF NOT EXISTS tradesByBaseQuoteAndTime ON trades(base,quote,timestamp)");
-	await db.query("CREATE INDEX IF NOT EXISTS tradesByQuoteBaseAndTime ON trades(quote,base,timestamp)");
+	await db.query("CREATE INDEX IF NOT EXISTS tradesByBaseQuoteAndTime ON trades(aa_address,base,quote,timestamp)");
+	await db.query("CREATE INDEX IF NOT EXISTS tradesByQuoteBaseAndTime ON trades(aa_address,quote,base,timestamp)");
 
 	await db.query("CREATE TABLE IF NOT EXISTS pool_history (\n\
 		aa_address CHAR(32) NOT NULL, \n\
