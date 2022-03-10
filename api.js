@@ -427,6 +427,8 @@ async function getTheMostLiquidAddress(marketName) {
 		const {base_id, quote_id} = assocIdsByMarketNames[marketName];
 		let bestAddressData = {address: false, balance: 0}
 		const rows = await db.query("SELECT address FROM oswap_aas WHERE asset_0=? AND asset_1=?", [quote_id, base_id]);
+		if (rows.length === 1)
+			return rows[0].address;
 		for (let row of rows) {
 			const lRows = await db.query("SELECT balance FROM oswap_aa_balances WHERE address=? AND asset=? \
 				ORDER BY balance_date DESC LIMIT 1", [row.address, quote_id === 'base' ? 'GBYTE' : quote_id]);
