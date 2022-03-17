@@ -9,11 +9,11 @@ Install node.js 8+, clone the repository, then
 
 `npm install`
 
-By default the API is accessible at `http://localhost:4100` (`http://localhost:4101` for testnet). You may want to setup a reverse proxy like Nginx to make it accessible on a public url.
+By default the API is accessible at `http://localhost:4200` (`http://localhost:4201` for testnet). You may want to setup a reverse proxy like Nginx to make it accessible on a public url.
 
 #### Run
 
-`node start.js oswap-stats 1>log 2>errlog &`
+`node start.js oswap2-stats 2>errlog`
 
 
 #### Endpoints

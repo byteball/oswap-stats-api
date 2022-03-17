@@ -1,1 +1,1 @@
-*/20 * * * * cd oswap-stats-api; node check_daemon.js 1>>~/.config/oswap-stats-api/check_daemon.log 2>>~/.config/oswap-stats-api/check_daemon.err
+*/20 * * * * cd oswap-stats-api-v2; node check_daemon.js 1>>~/.config/oswap-stats-api-v2/check_daemon.log 2>>~/.config/oswap-stats-api-v2/check_daemon.err
