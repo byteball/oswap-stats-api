@@ -30,10 +30,17 @@ var bRefreshing = false;
 
 async function initMarkets(){
 	await initAssetsCache();
-	const rows = await db.query('SELECT address, asset_0, asset_1 FROM oswap_aas');
+	const rows = await db.query('SELECT address, x_asset, y_asset FROM oswap_aas');
 	for (let i=0; i < rows.length; i++){
-		await refreshMarket(rows[i].address, rows[i].asset_1, rows[i].asset_0)
+		await refreshMarket(rows[i].address, rows[i].x_asset, rows[i].y_asset)
 	}
+}
+
+function getSymbol(asset) {
+	const info = assocAssets[asset];
+	if (!info)
+		throw Error(`no info on asset ` + asset);
+	return info.symbol;
 }
 
 async function initAssetsCache(){
@@ -42,7 +49,27 @@ async function initAssetsCache(){
 	rows.forEach(function(row){
 		setAsset(row);
 	});
+
+	// add leveraged tokens
+	const aa_rows = await db.query('SELECT address, x_asset, y_asset FROM oswap_aas');
+	for (let { address, x_asset, y_asset } of aa_rows) {
+		const x_info = assocAssets[x_asset];
+		const y_info = assocAssets[y_asset];
+		if (!x_info)
+			throw Error(`no info for ` + x_asset);
+		if (!y_info)
+			throw Error(`no info for ` + y_asset);
+		const x_symbol = x_info.symbol;
+		const y_symbol = y_info.symbol;
+		for (let L of [2, 5, 10, 20, 50, 100]) {
+			const xL = `${x_symbol}/${y_symbol}_${L}x`;
+			const yL = `${y_symbol}/${x_symbol}_${L}x`;
+			setAsset({ asset: xL, symbol: xL, decimals: x_info.decimals, description: `${L}x leverage in ${x_symbol}/${y_symbol} on ${address}` });
+			setAsset({ asset: yL, symbol: yL, decimals: y_info.decimals, description: `${L}x leverage in ${y_symbol}/${x_symbol} on ${address}` });
+		}
+	}
 }
+
 function setAsset(row){
 	if (!row)
 		return;
@@ -56,7 +83,6 @@ function setAsset(row){
 		decimals: row.decimals,
 		description: row.description,
 		symbol: row.symbol,
-		fee: row.fee,
 	};
 
 	if (row.supply)
@@ -122,7 +148,7 @@ async function createTicker(address, base, quote){
 }
 
 async function refreshMarket(address, base, quote){
-	const unlock = await mutex.lockOrSkip(['refresh_' + address]);
+	const unlock = await mutex.lockOrSkip(['refresh_' + getKeyName(address, base, quote)]);
 	if (!unlock)
 		return;
 	bRefreshing = true;
@@ -300,6 +326,29 @@ async function makeCandleForPair(table_name, start_timestamp, end_timestamp, bas
 	var rows = await db.query("SELECT MIN(quote_qty*1.0/base_qty) AS low,MAX(quote_qty*1.0/base_qty) AS high,SUM(quote_qty) AS quote_volume,SUM(base_qty) AS base_volume \n\
 	FROM trades WHERE timestamp >=? AND timestamp <?  AND quote=? AND base=? AND aa_address=?",[start_timestamp, end_timestamp, quote, base, aa_address]);
 
+	const [{ x_asset, y_asset }] = await db.query('SELECT x_asset, y_asset FROM oswap_aas WHERE address = ?', [aa_address]);
+	if (x_asset === base && y_asset === quote) {
+		var [fees] = await db.query(
+			`SELECT 
+				SUM(base_interest) AS base_interest,
+				SUM(quote_interest) AS quote_interest,
+				SUM(base_swap_fee) AS base_swap_fee,
+				SUM(quote_swap_fee) AS quote_swap_fee,
+				SUM(base_arb_profit_tax) AS base_arb_profit_tax,
+				SUM(quote_arb_profit_tax) AS quote_arb_profit_tax,
+				SUM(base_l_tax) AS base_l_tax,
+				SUM(quote_l_tax) AS quote_l_tax,
+				SUM(base_total_fee) AS base_total_fee,
+				SUM(quote_total_fee) AS quote_total_fee,
+				SUM(base_exit_fee) AS base_exit_fee,
+				SUM(quote_exit_fee) AS quote_exit_fee
+			FROM pool_history WHERE timestamp >= ? AND timestamp < ? AND aa_address = ?`,
+			[start_timestamp, end_timestamp, aa_address]
+		);
+	}
+	else
+		fees = {};
+
 	if (rows[0] && rows[0].low){
 		low = rows[0].low * getDecimalsPriceCoefficient(base, quote);
 		high = rows[0].high * getDecimalsPriceCoefficient(base, quote);
@@ -325,8 +374,29 @@ async function makeCandleForPair(table_name, start_timestamp, end_timestamp, bas
 		base_volume = 0;
 	}
 
-	await db.query("REPLACE INTO " + table_name + " (base,quote,aa_address,quote_qty,base_qty,highest_price,lowest_price,open_price,close_price,start_timestamp)\n\
-	VALUES (?,?,?,?,?,?,?,?,?,?)",[ base, quote, aa_address, quote_volume, base_volume, high, low, open_price, close_price,start_timestamp]);
+	for (let var_name in fees) {
+		if (var_name.startsWith('base_'))
+			fees[var_name] /= 10 ** assocAssets[base].decimals;
+		else if (var_name.startsWith('quote_'))
+			fees[var_name] /= 10 ** assocAssets[quote].decimals;
+		else
+			throw Error(`unrecognized var name ` + var_name);
+	}
+
+	await db.query("REPLACE INTO " + table_name + " (base,quote,aa_address,quote_qty,base_qty,highest_price,lowest_price,open_price,close_price,start_timestamp, base_interest,quote_interest, base_swap_fee,quote_swap_fee, base_arb_profit_tax,quote_arb_profit_tax, base_l_tax,quote_l_tax, base_total_fee,quote_total_fee, base_exit_fee,quote_exit_fee)\n\
+	VALUES (?,?,?, ?,?, ?,?,?,?, ?, ?,?, ?,?, ?,?, ?,?, ?,?, ?,?)",
+		[base, quote, aa_address,
+			quote_volume, base_volume,
+			high, low, open_price, close_price,
+			start_timestamp,
+			fees.base_interest || 0, fees.quote_interest || 0,
+			fees.base_swap_fee || 0, fees.quote_swap_fee || 0,
+			fees.base_arb_profit_tax || 0, fees.quote_arb_profit_tax || 0,
+			fees.base_l_tax || 0, fees.quote_l_tax || 0,
+			fees.base_total_fee || 0, fees.quote_total_fee || 0,
+			fees.base_exit_fee || 0, fees.quote_exit_fee || 0,
+		]
+	);
 }
 
 async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time, is_repeat) {
@@ -352,10 +422,34 @@ async function calcBalancesOfAddressWithSlicesByDate(address, start_time, end_ti
 	return Object.values(assocDateToBalances)
 }
 
-async function getCandles(period, start_time, end_time, quote_id, base_id, address) {
+async function getCandles(period, start_time, end_time, base_id, quote_id, address) {
 	return db.query("SELECT quote_qty AS quote_volume,base_qty AS base_volume,highest_price,lowest_price,open_price,close_price,start_timestamp\n\
 	FROM " + period + "_candles WHERE start_timestamp>=? AND start_timestamp<? AND quote=? AND base=? AND aa_address=?",
 	[start_time.toISOString(), end_time.toISOString(), quote_id, base_id, address])
+}
+
+async function getTotals(period, start_time, end_time, address) {
+	const [totals] = await db.query(
+		`SELECT 
+			SUM(quote_qty) AS quote_volume,
+			SUM(base_qty) AS base_volume,
+			SUM(base_interest) AS base_interest,
+			SUM(quote_interest) AS quote_interest,
+			SUM(base_swap_fee) AS base_swap_fee,
+			SUM(quote_swap_fee) AS quote_swap_fee,
+			SUM(base_arb_profit_tax) AS base_arb_profit_tax,
+			SUM(quote_arb_profit_tax) AS quote_arb_profit_tax,
+			SUM(base_l_tax) AS base_l_tax,
+			SUM(quote_l_tax) AS quote_l_tax,
+			SUM(base_total_fee) AS base_total_fee,
+			SUM(quote_total_fee) AS quote_total_fee,
+			SUM(base_exit_fee) AS base_exit_fee,
+			SUM(quote_exit_fee) AS quote_exit_fee
+		FROM ${period}_candles 
+		WHERE start_timestamp>=? AND start_timestamp<? AND aa_address=?`,
+		[start_time.toISOString(), end_time.toISOString(), address]
+	);
+	return totals;
 }
 
 function assetValue(value, asset) {
@@ -363,75 +457,101 @@ function assetValue(value, asset) {
 	return value / 10 ** decimals;
 }
 
-function getMarketcap(balances, asset0, asset1) {
-	let assetValue0 = 0;
-	let assetValue1 = 0;
-	let base = 0;
-	if (asset0 === 'base' || asset1 === 'base') base = balances.base;
-
-	if (base) {
-		assetValue0 = assetValue1 =
-			(getExchangeRates().GBYTE_USD / 1e9) * base;
-	} else {
-		const assetId0 = asset0 === "base" ? "GBYTE" : asset0;
-		const assetId1 = asset1 === "base" ? "GBYTE" : asset1;
-		const assetInfo0 = assocAssets[asset0];
-		const assetInfo1 = assocAssets[asset1];
-		assetValue0 = getExchangeRates()[`${assetId0}_USD`]
-			? getExchangeRates()[`${assetId0}_USD`] *
-			assetValue(balances[assetId0], assetInfo0)
-			: 0;
-		assetValue1 = getExchangeRates()[`${assetId1}_USD`]
-			? getExchangeRates()[`${assetId1}_USD`] *
-			assetValue(balances[assetId1], assetInfo1)
-			: 0;
-	}
-	return assetValue0 && assetValue1 ? assetValue0 + assetValue1 : 0;
+function getMarketcap(balances, x_asset, y_asset) {
+	const x_asset_id = x_asset === "base" ? "GBYTE" : x_asset;
+	const y_asset_id = y_asset === "base" ? "GBYTE" : y_asset;
+	const x_asset_info = assocAssets[x_asset];
+	const y_asset_info = assocAssets[y_asset];
+	const x_rate = getExchangeRates()[`${x_asset_id}_USD`];
+	const y_rate = getExchangeRates()[`${y_asset_id}_USD`];
+	console.error({x_asset, y_asset, x_rate, y_rate})
+	const x_asset_value = x_rate ? x_rate * assetValue(balances[x_asset], x_asset_info) : 0;
+	const y_asset_value = y_rate ? y_rate * assetValue(balances[y_asset], y_asset_info) : 0;
+	return x_asset_value && y_asset_value ? x_asset_value + y_asset_value : 0;
 }
 
-async function getAPY7d(endTime, quote_id, base_id, address, balances, fee) {
+async function getAPY7d(endTime, base_id, quote_id, address, balances) {
 	const startTime = new Date(endTime);
 	startTime.setUTCDate(startTime.getUTCDate() - 7);
 
-	const candles = await getCandles('daily', startTime, endTime, quote_id, base_id, address);
-	const marketCap = getMarketcap(balances, quote_id, base_id);
+	const totals = await getTotals('daily', startTime, endTime, address);
+	const marketCap = getMarketcap(balances, base_id, quote_id);
 
-	let asset = quote_id === 'base' ? 'GBYTE' : quote_id;
-	let type = "quote";
-	let rate = getExchangeRates()[`${asset}_USD`];
-	if (!rate) {
-		asset = base_id === 'base' ? 'GBYTE' : base_id;
-		type = "base";
-		rate = getExchangeRates()[`${asset}_USD`];
+	let base_label = base_id === 'base' ? 'GBYTE' : base_id;
+	let quote_label = quote_id === 'base' ? 'GBYTE' : quote_id;
+	let base_rate = getExchangeRates()[`${base_label}_USD`];
+	let quote_rate = getExchangeRates()[`${quote_label}_USD`];
+	if (!base_rate)
+		throw Error(`no rate for ` + base_id);
+	if (!quote_rate)
+		throw Error(`no rate for ` + quote_id);
+	const volume = totals.quote_volume * quote_rate;
+
+	delete totals.base_total_fee;
+	delete totals.quote_total_fee;
+	let earnings7d = { total: 0, swap_fee: 0, arb_profit_tax: 0, l_tax: 0, exit_fee: 0, interest: 0 };
+	for (let var_name in totals) {
+		if (var_name.endsWith('_volume'))
+			continue;
+		let type, earned;
+		if (var_name.startsWith('base_')) {
+			type = var_name.substring('base_'.length);
+			earned = totals[var_name] * base_rate;
+		}
+		else if (var_name.startsWith('quote_')) {
+			type = var_name.substring('quote_'.length);
+			earned = totals[var_name] * quote_rate;
+		}
+		else
+			throw Error(`unrecognized var name ` + var_name);
+		if (typeof earnings7d[type] !== 'number')
+			throw Error(`unknown fee type: ${type}`);
+		earnings7d.total += earned;
+		earnings7d[type] += earned;
 	}
+	const total_fee_rate = earnings7d.total / volume;
 
-	const earning7d = candles
-	.map((c) => {
-		const volume = type === "quote" ? c.quote_volume : c.base_volume;
-		const inUSD = volume * rate;
-		return inUSD * fee;
-	})
-	.reduce((prev, curr) => prev + curr, 0);
-
-	const apy = (1 + earning7d / marketCap) ** (365 / 7) - 1;
+	const apy = (1 + earnings7d.total / marketCap) ** (365 / 7) - 1;
+	console.error(`APY ${address}: ${apy}, MC ${marketCap}`, totals, balances)
 	
-	return Number((apy * 100).toFixed(2)) || 0;
+	return { apy: +(apy * 100).toFixed(2), earnings7d };
 }
 
-async function getPoolHistory(address) {
-	return db.query("SELECT * FROM pool_history WHERE aa_address=? ORDER BY timestamp DESC LIMIT 20", [address]);
+async function getAverageBalances(address, endTime, days) {
+	const startTime = new Date(endTime);
+	startTime.setUTCDate(startTime.getUTCDate() - days);
+	const rows = await db.query(`SELECT asset, AVG(balance) AS balance FROM oswap_aa_balances WHERE address=? AND balance_date>=? AND balance_date<? GROUP BY asset`, [address, startTime.toISOString(), endTime.toISOString()]);
+	const balances = {};
+	for (let { asset, balance } of rows)
+		balances[asset] = balance;
+	return balances;
+}
+
+async function getPoolHistory(address, type) {
+	let and_type;
+	if (!type)
+		and_type = '';
+	else if (type === 'swap')
+		and_type = "AND type IN('buy', 'sell')";
+	else if (type === 'leverage')
+		and_type = "AND type IN('buy_leverage', 'sell_leverage')";
+	else if (type === 'liquidity')
+		and_type = "AND type IN('add', 'remove')";
+	else
+		throw Error(`unknown type ${type}`);
+	return db.query("SELECT * FROM pool_history WHERE aa_address=? " + and_type + " ORDER BY timestamp DESC LIMIT 100", [address]);
 }
 
 async function getTheMostLiquidAddress(marketName) {
 	if (assocIdsByMarketNames[marketName]) {
 		const {base_id, quote_id} = assocIdsByMarketNames[marketName];
 		let bestAddressData = {address: false, balance: 0}
-		const rows = await db.query("SELECT address FROM oswap_aas WHERE asset_0=? AND asset_1=?", [quote_id, base_id]);
+		const rows = await db.query("SELECT address FROM oswap_aas WHERE x_asset=? AND y_asset=?", [base_id, quote_id]);
 		if (rows.length === 1)
 			return rows[0].address;
 		for (let row of rows) {
 			const lRows = await db.query("SELECT balance FROM oswap_aa_balances WHERE address=? AND asset=? \
-				ORDER BY balance_date DESC LIMIT 1", [row.address, quote_id === 'base' ? 'GBYTE' : quote_id]);
+				ORDER BY balance_date DESC LIMIT 1", [row.address, quote_id]);
 
 			if (lRows.length) {
 				if (lRows[0].balance > bestAddressData.balance) {
@@ -478,7 +598,7 @@ async function sendCandlesByFullMarketName(fullMarketName, period, start_time, e
 		await waitUntilRefreshFinished();
 
 		const ticker = assocTickersByMarketNames[fullMarketName];
-		const rows = await getCandles(period, start_time, end_time, ticker.quote_id, ticker.base_id, ticker.address);
+		const rows = await getCandles(period, start_time, end_time, ticker.base_id, ticker.quote_id, ticker.address);
 		return response.send(rows);
 	}
 	else
@@ -585,26 +705,16 @@ async function start(){
 		endTime.setUTCHours(0, 0, 0, 0);
 
 		const assocAPYByMarketName = {};
+		const rows = await db.query('SELECT address, x_asset, y_asset FROM oswap_aas');
 
-		for (let key in assocTickersByMarketNames) {
-			const q = assocTickersByMarketNames[key];
-			
-			const rows = await db.query("SELECT fee FROM oswap_aas WHERE address=?",
-			[q.address]);
-
-			if (!rows.length) {
-				assocAPYByMarketName[q.address] = 0
-			} else {
-				const fee = rows[0].fee / 10 ** 11;
-				const balances = await getBalancesByAddress(q.address);
-				assocAPYByMarketName[q.address] = await getAPY7d(
-					endTime,
-					q.quote_id,
-					q.base_id,
-					q.address,
-					balances,
-					fee);
-			}
+		for (let { address, x_asset, y_asset } of rows) {		
+			const balances = await getAverageBalances(address, endTime, 7);
+			assocAPYByMarketName[address] = await getAPY7d(
+				endTime,
+				x_asset,
+				y_asset,
+				address,
+				balances);
 		}
 		response.send(assocAPYByMarketName);
 	});
@@ -615,8 +725,9 @@ async function start(){
 
 	app.get('/api/v1/history/:address', async function (request, response) {
 		const address = request.params.address;
+		const type = request.query.type;
 
-		const history = await getPoolHistory(address);
+		const history = await getPoolHistory(address, type);
 
 		response.send(history);
 	});
@@ -668,9 +779,9 @@ function getLandingPage(){
 	html +='<li><a href="/api/v1/summary">summary</a></li>';
 	html +='<li><a href="/api/v1/tickers">tickers</a></li>';
 	for (var key in assocTickersByMarketNames)
-		html +='<li><a href="/api/v1/ticker/'+ key + '">ticker ' + key + ' </a></li>';
+		html +='<li><a href="/api/v1/ticker_by_full_market_name/'+ key + '">ticker ' + key + ' </a></li>';
 	for (var key in assocTickersByMarketNames)
-		html +='<li><a href="/api/v1/trades/'+ key + '">trades ' + key + ' </a></li>';
+		html +='<li><a href="/api/v1/trades_by_full_market_name/'+ key + '">trades ' + key + ' </a></li>';
 	html += '</ul></html>';
 	return html;
 }
@@ -679,3 +790,5 @@ function getLandingPage(){
 exports.start = start;
 exports.refreshMarket = refreshMarket;
 exports.initMarkets = initMarkets;
+exports.getSymbol = getSymbol;
+exports.initAssetsCache = initAssetsCache;

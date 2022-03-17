@@ -8,6 +8,7 @@ const objectHash = require('ocore/object_hash.js');
 const sqlite_tables = require('./sqlite_tables.js');
 const db = require('ocore/db.js');
 const api = require('./api.js');
+const dag = require('aabot/dag.js');
 const initHistoryAABalances = require('./initHistoryAABalances');
 const { dumpByAddress } = require('./dumpFunctions');
 const formatDate = require('./helpers/formatDate');
@@ -24,126 +25,210 @@ let apiIsStarted = false;
 async function treatResponseFromOswapAA(objResponse, objInfos){
 
 	const oswapAaAddress = objInfos.address;
-	const oswap_asset = objInfos.swap_asset;
+	const shares_asset = objInfos.shares_asset;
 
-	const asset0 = objInfos.asset_0;
-	const asset1 = objInfos.asset_1;
+	const x_asset = objInfos.x_asset;
+	const y_asset = objInfos.y_asset;
 
-	if (objResponse.response.responseVars && objResponse.response.responseVars.type == 'mint'){
+	const { trigger_unit, trigger_address, response_unit, objResponseUnit, response: { responseVars } } = objResponse;
 
-		const objTriggerUnit = await storage.readUnit(objResponse.trigger_unit);
-		if (!objTriggerUnit)
-			throw Error('trigger unit not found ' + objResponse.trigger_unit);
-	
-		const objResponseUnit = await getJointFromStorageOrHub(objResponse.response_unit);
-		if (!objResponseUnit)
-			throw Error('response unit not found ' + objResponse.trigger_unit);
-
-		const timestamp = new Date(objResponseUnit.timestamp * 1000).toISOString();
-		var asset0_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, asset0);
-		var asset1_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, asset1); 
-
-		if (asset0_amount > 0 && asset1 == 'base' && asset1_amount == bounce_fees)
-			asset1_amount -= bounce_fees;
-		if (asset1_amount > 0 && asset0 == 'base' && asset0_amount == bounce_fees)
-			asset0_amount -= bounce_fees;
-
-		const oswap_asset_amount = objResponse.response.responseVars.asset_amount;
-
-		const oswapAaVars = await getStateVars(oswapAaAddress);
-		const supply = oswapAaVars.supply;
-
-		if (asset0_amount > 0){
-			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
-			[oswapAaAddress, objResponse.response_unit, asset0, oswap_asset, asset0_amount, asset1_amount > 0 ? oswap_asset_amount / 2 : oswap_asset_amount, 'sell', timestamp]);
-			api.refreshMarket(asset0, oswap_asset);
-		}
-
-		if (asset1_amount > 0){
-			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp, indice) VALUES (?,?,?,?,?,?,?,?,1)", 
-			[oswapAaAddress, objResponse.response_unit, asset1, oswap_asset, asset1_amount, asset0_amount > 0 ? oswap_asset_amount / 2 : oswap_asset_amount, 'sell', timestamp]);
-			api.refreshMarket(asset1, oswap_asset);
-		}
-
-		await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
-		[oswapAaAddress, objResponse.response_unit, objResponse.trigger_unit, objResponse.trigger_address, asset1, asset0, asset1_amount, asset0_amount, 'mint', timestamp]);
-
-		await saveSupplyForAsset(oswap_asset, supply);
+	if (!responseVars)
+		return console.log(`no resp vars in response from ${trigger_unit}`);
+	const { event: strEvent, interest: strInterest } = responseVars;
+	if (!strEvent)
+		return console.log(`no event in response from ${trigger_unit}`);
+	const event = JSON.parse(strEvent);
+	let base_interest = 0, quote_interest = 0;
+	if (strInterest) {
+		const interest = JSON.parse(strInterest); // can be "true" if early-returned from $charge_interest()
+		base_interest = interest.x || 0;
+		quote_interest = interest.y || 0;
 	}
 
-	if (objResponse.response.responseVars && objResponse.response.responseVars.type == 'burn'){
+	const objTriggerUnit = await storage.readUnit(trigger_unit);
+	if (!objTriggerUnit)
+		throw Error('trigger unit not found ' + trigger_unit);
 
-		const objTriggerUnit = await storage.readUnit(objResponse.trigger_unit);
-		if (!objTriggerUnit)
-			throw Error('trigger unit not found ' + objResponse.trigger_unit);
+	const timestamp = new Date(objResponse.timestamp * 1000).toISOString();
+
+
+	if (event.type === 'add'){
+
+		if (!response_unit)
+			throw Error('no response unit from trigger ' + trigger_unit);
 	
-	
-		const objResponseUnit = await getJointFromStorageOrHub(objResponse.response_unit);
-		if (!objResponseUnit)
-			throw Error('response unit not found ' + objResponse.trigger_unit);
+		let x_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, x_asset);
+		let y_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, y_asset); 
 
-		const timestamp = new Date(objResponseUnit.timestamp * 1000).toISOString();
-		const oswap_asset_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, oswap_asset); 
-	
-		const asset0_amount = objResponse.response.responseVars.asset0_amount;
-		const asset1_amount = objResponse.response.responseVars.asset1_amount;
+		if (x_amount > 0 && y_asset === 'base' && y_amount === bounce_fees)
+			y_amount -= bounce_fees;
+		if (y_amount > 0 && x_asset === 'base' && x_amount === bounce_fees)
+			x_amount -= bounce_fees;
 
-		const oswapAaVars = await getStateVars(oswapAaAddress);
-		const supply = oswapAaVars.supply;
+		let x_amount_out = getAmountFromAa(objResponseUnit, oswapAaAddress, x_asset);
+		let y_amount_out = getAmountFromAa(objResponseUnit, oswapAaAddress, y_asset);
+		let shares_amount = getAmountFromAa(objResponseUnit, oswapAaAddress, shares_asset);
 
-		if (asset0_amount > 0){
+		// subtract the change
+		if (x_amount_out)
+			x_amount -= x_amount_out
+		if (y_amount_out)
+			y_amount -= y_amount_out
+
+		const oswapAaVars = await dag.readAAStateVars(oswapAaAddress);
+		const supply = oswapAaVars.lp_shares.issued;
+
+		const px = await dag.executeGetter(oswapAaAddress, 'get_price', ['x']);
+		const total_value_in_y = y_amount + px * x_amount;
+		const share_price_in_y = total_value_in_y / shares_amount;
+		const share_price_in_x = share_price_in_y / px;
+		const shares_for_x = x_amount / share_price_in_x;
+		const shares_for_y = y_amount / share_price_in_y;
+
+		if (x_amount > 0){
 			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
-			[oswapAaAddress, objResponse.response_unit, asset0, oswap_asset, asset0_amount, oswap_asset_amount / 2, 'buy', timestamp]);
-			api.refreshMarket(asset0, oswap_asset);
+			[oswapAaAddress, response_unit, shares_asset, x_asset, shares_for_x, x_amount, 'buy', timestamp]);
+			api.refreshMarket(oswapAaAddress, shares_asset, x_asset);
 		}
 
-		if (asset1_amount > 0){
+		if (y_amount > 0){
 			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp, indice) VALUES (?,?,?,?,?,?,?,?,1)", 
-			[oswapAaAddress, objResponse.response_unit, asset1, oswap_asset, asset1_amount, oswap_asset_amount / 2, 'buy', timestamp]);
-			api.refreshMarket(asset1, oswap_asset);
+			[oswapAaAddress, response_unit, shares_asset, y_asset, shares_for_y, y_amount, 'buy', timestamp]);
+			api.refreshMarket(oswapAaAddress, shares_asset, y_asset);
 		}
 
-		await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
-		[oswapAaAddress, objResponse.response_unit, objResponse.trigger_unit, objResponse.trigger_address, asset1, asset0, asset1_amount, asset0_amount, 'burn', timestamp]);
+		await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp, base_interest, quote_interest) VALUES (?,?,?,?, ?,?,?,?, ?,?, ?,?)",
+			[oswapAaAddress, response_unit, trigger_unit, trigger_address,
+				x_asset, y_asset, x_amount, y_amount,
+				'add', timestamp,
+				base_interest, quote_interest
+			]
+		);
 
-		await saveSupplyForAsset(oswap_asset, supply);
+		await saveSupplyForAsset(shares_asset, supply);
 	}
 
-	if (objResponse.response.responseVars && objResponse.response.responseVars.type == 'swap'){
+	if (event.type === 'remove'){
 
-		const objTriggerUnit = await storage.readUnit(objResponse.trigger_unit);
-		if (!objTriggerUnit)
-			throw Error('trigger unit not found ' + objResponse.trigger_unit);
-
-		const objResponseUnit = await getJointFromStorageOrHub(objResponse.response_unit);
-		if (!objResponseUnit)
-			throw Error('response unit not found ' + objResponse.trigger_unit);
-
-		const timestamp = new Date(objResponseUnit.timestamp * 1000).toISOString();
+		if (!response_unit)
+			throw Error('no response unit from trigger ' + trigger_unit);
 	
-		const asset0_amount_in = getAmountToAa(objTriggerUnit, oswapAaAddress, asset0); 
-		const asset1_amount_in = getAmountToAa(objTriggerUnit, oswapAaAddress, asset1); 
+		const shares_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, shares_asset); 	
+		let x_amount = getAmountFromAa(objResponseUnit, oswapAaAddress, x_asset);
+		let y_amount = getAmountFromAa(objResponseUnit, oswapAaAddress, y_asset);
 
-		const asset0_amount_out = objResponse.response.responseVars.asset0_amount || 0;
-		const asset1_amount_out = objResponse.response.responseVars.asset1_amount || 0;
+		const oswapAaVars = await dag.readAAStateVars(oswapAaAddress);
+		const supply = oswapAaVars.lp_shares.issued;
 
-		if (asset0_amount_out > 0){
+		const px = await dag.executeGetter(oswapAaAddress, 'get_price', ['x']);
+		const total_value_in_y = y_amount + px * x_amount;
+		const share_price_in_y = total_value_in_y / shares_amount;
+		const share_price_in_x = share_price_in_y / px;
+		const shares_for_x = x_amount / share_price_in_x;
+		const shares_for_y = y_amount / share_price_in_y;
+
+		if (x_amount > 0){
 			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
-			[oswapAaAddress, objResponse.response_unit, asset1, asset0, asset1_amount_in, asset0_amount_out, 'sell', timestamp]);
-
-			await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
-			[oswapAaAddress, objResponse.response_unit, objResponse.trigger_unit, objResponse.trigger_address, asset1, asset0, asset0_amount_out, asset1_amount_in, 'swap_out', timestamp]);
+			[oswapAaAddress, response_unit, shares_asset, x_asset, shares_for_x, x_amount, 'sell', timestamp]);
+			api.refreshMarket(oswapAaAddress, shares_asset, x_asset);
 		}
 
-		if (asset1_amount_out > 0){
-			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
-			[oswapAaAddress, objResponse.response_unit, asset1, asset0, asset1_amount_out, asset0_amount_in, 'buy', timestamp]);
-
-			await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?,?,?)",
-			[oswapAaAddress, objResponse.response_unit, objResponse.trigger_unit, objResponse.trigger_address, asset1, asset0, asset1_amount_out, asset0_amount_in, 'swap_in', timestamp]);
+		if (y_amount > 0){
+			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp, indice) VALUES (?,?,?,?,?,?,?,?,1)", 
+			[oswapAaAddress, response_unit, shares_asset, y_asset, shares_for_y, y_amount, 'sell', timestamp]);
+			api.refreshMarket(oswapAaAddress, shares_asset, y_asset);
 		}
 
-		api.refreshMarket(asset1, asset0);
+		await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp, base_interest, quote_interest, base_exit_fee, base_quote_fee) VALUES (?,?,?,?, ?,?,?,?, ?,?, ?,?, ?,?)",
+			[oswapAaAddress, response_unit, trigger_unit, trigger_address,
+				x_asset, y_asset, x_amount, y_amount,
+				'remove', timestamp,
+				base_interest, quote_interest,
+				event.x_fee || 0, event.y_fee || 0
+			]
+		);
+
+		await saveSupplyForAsset(shares_asset, supply);
+	}
+
+	if (event.type === 'swap'){
+
+		if (!response_unit)
+			throw Error('no response unit from trigger ' + trigger_unit);
+	
+		let x_amount_in = getAmountToAa(objTriggerUnit, oswapAaAddress, x_asset); 
+		let y_amount_in = getAmountToAa(objTriggerUnit, oswapAaAddress, y_asset); 
+
+		let x_amount_out = getAmountFromAa(objResponseUnit, oswapAaAddress, x_asset);
+		let y_amount_out = getAmountFromAa(objResponseUnit, oswapAaAddress, y_asset);
+
+		// subtract the change
+		if (x_amount_out > 0 && y_amount_out > 0) {
+			if (x_amount_out < x_amount_in) {
+				x_amount_in -= x_amount_out;
+				x_amount_out = 0;
+			}
+			if (y_amount_out < y_amount_in) {
+				y_amount_in -= y_amount_out;
+				y_amount_out = 0;
+			}
+		}
+
+		if (x_amount_out > 0){
+			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
+			[oswapAaAddress, response_unit, x_asset, y_asset, x_amount_out, y_amount_in, 'buy', timestamp]);
+
+			await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp, base_interest, quote_interest, base_swap_fee, base_arb_profit_tax, base_total_fee) VALUES (?,?,?,?, ?,?,?,?, ?,?, ?,?, ?,?,?)",
+				[oswapAaAddress, response_unit, trigger_unit, trigger_address,
+					x_asset, y_asset, x_amount_out, y_amount_in,
+					'buy', timestamp,
+					base_interest, quote_interest,
+					event.swap_fee, event.arb_profit_tax, event.total_fee
+				]
+			);
+		}
+
+		if (y_amount_out > 0){
+			await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
+			[oswapAaAddress, response_unit, x_asset, y_asset, x_amount_in, y_amount_out, 'sell', timestamp]);
+
+			await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp, base_interest, quote_interest, quote_swap_fee, quote_arb_profit_tax, quote_total_fee) VALUES (?,?,?,?, ?,?,?,?, ?,?, ?,?, ?,?,?)",
+				[oswapAaAddress, response_unit, trigger_unit, trigger_address,
+					x_asset, y_asset, x_amount_in, y_amount_out,
+					'sell', timestamp,
+					base_interest, quote_interest,
+					event.swap_fee, event.arb_profit_tax, event.total_fee
+				]
+			);
+		}
+
+		api.refreshMarket(oswapAaAddress, x_asset, y_asset);
+	}
+
+	if (event.type === 'leverage'){
+
+		const { shares, amount, token, L } = event;
+		const x_symbol = api.getSymbol(x_asset);
+		const y_symbol = api.getSymbol(y_asset);
+		const side = token === 'x' ? 'base' : 'quote';
+		const base = token === 'x' ? `${x_symbol}/${y_symbol}_${L}x` : `${y_symbol}/${x_symbol}_${L}x`;
+		const quote = token === 'x' ? x_asset : y_asset;
+		const base_qty = Math.abs(shares);
+		const quote_qty = Math.abs(amount);
+
+		await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
+		[oswapAaAddress, response_unit, base, quote, base_qty, quote_qty, amount > 0 ? 'buy' : 'sell', timestamp]);
+
+		await db.query(`INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp, base_interest, quote_interest, ${side}_swap_fee, ${side}_arb_profit_tax, ${side}_l_tax, ${side}_total_fee) VALUES (?,?,?,?, ?,?,?,?, ?,?, ?,?, ?,?,?,?)`,
+			[oswapAaAddress, response_unit, trigger_unit, trigger_address,
+				base, quote, base_qty, quote_qty,
+				amount > 0 ? 'buy_leverage' : 'sell_leverage', timestamp,
+				base_interest, quote_interest,
+				event.swap_fee, event.arb_profit_tax, event.l_tax, event.total_fee
+			]
+		);
+
+		api.refreshMarket(oswapAaAddress, base, quote); // fix
 	}
 
 	if(apiIsStarted) {
@@ -185,6 +270,27 @@ function getAmountToAa(objTriggerUnit, aa_address, asset = 'base'){
 	return amount;
 }
 
+function getAmountFromAa(objResponseUnit, aa_address, asset = 'base'){
+
+	if (!objResponseUnit)
+		return 0;
+	let amount = 0;
+	objResponseUnit.messages.forEach(function (message){
+		if (message.app !== 'payment')
+			return;
+		const payload = message.payload;
+		const a = payload.asset || 'base';
+		if (asset !== a)
+			return;
+		payload.outputs.forEach(function (output){
+			if (output.address !== aa_address) {
+				amount += output.amount; // in case there are several outputs
+			}
+		});
+	});
+	return amount;
+}
+
 
 function addWatchedAas(){
 	network.addLightWatchedAa(conf.oswap_base_aa, null, console.log);
@@ -195,6 +301,7 @@ function addWatchedAas(){
 async function start(){
 	await sqlite_tables.create();
 	await discoverOswapAas()
+	await api.initAssetsCache();
 	addWatchedAas();
 	eventBus.on('connected', addWatchedAas);
 	lightWallet.refreshLightClientHistory();
@@ -247,8 +354,11 @@ async function saveSupplyForAsset(asset, supply){
 	await db.query("REPLACE INTO supplies (supply,asset) VALUES (?,?)", [supply, asset]);
 }
 
+let knownAssets = {};
 
 async function saveSymbolForAsset(asset){
+	if (knownAssets[asset])
+		return;
 	var symbol,decimals, description;
 	if (asset !== 'base'){
 		var registryVars = await getStateVarsForPrefixes(conf.token_registry_aa_address, [
@@ -272,11 +382,12 @@ async function saveSymbolForAsset(asset){
 	};
 
 	await db.query("REPLACE INTO oswap_assets (asset, symbol, decimals, description) VALUES (?,?,?,?)", [asset, symbol, decimals, description]);
+	knownAssets[asset] = true;
 }
 
 async function refreshSymbols(){
-	const rows = await db.query("SELECT swap_asset AS asset FROM oswap_aas UNION SELECT DISTINCT asset_0 AS asset FROM oswap_aas \n\
-	UNION SELECT asset_1 AS asset FROM oswap_aas");
+	const rows = await db.query("SELECT shares_asset AS asset FROM oswap_aas UNION SELECT DISTINCT x_asset AS asset FROM oswap_aas \n\
+	UNION SELECT y_asset AS asset FROM oswap_aas");
 	for (var i=0; i < rows.length; i++)
 		await saveSymbolForAsset(rows[i].asset);
 	api.initMarkets();
@@ -288,17 +399,17 @@ async function saveOswapAa(objAa){
 	return new Promise(async (resolve)=>{
 
 		const oswapAaAddress = objAa.address;
-		const asset0 = objAa.definition[1].params.asset0;
-		const asset1 = objAa.definition[1].params.asset1;
-		const fee = objAa.definition[1].params.swap_fee;
+		const x_asset = objAa.definition[1].params.x_asset;
+		const y_asset = objAa.definition[1].params.y_asset;
 
-		const factoryAaVars = await getStateVarsForPrefix(conf.factory_aa, 'pools.' + oswapAaAddress + '.asset');
-		const asset = factoryAaVars['pools.' + oswapAaAddress + '.asset'];
+		const stateVars = await dag.readAAStateVars(oswapAaAddress);
+		const { lp_shares } = stateVars;
+		const shares_asset = lp_shares.asset;
 
-		if (!asset)
+		if (!shares_asset)
 			return setTimeout(function(){ saveOswapAa(objAa).then(resolve) }, 1000);
-		await db.query("INSERT OR REPLACE INTO oswap_aas (address, asset_0, asset_1, swap_asset, fee) VALUES (?,?,?,?,?)", [oswapAaAddress, asset0, asset1, asset, fee]);
-		await Promise.all([saveSymbolForAsset(asset), saveSymbolForAsset(asset0), saveSymbolForAsset(asset1)]);
+		await db.query("INSERT OR REPLACE INTO oswap_aas (address, x_asset, y_asset, shares_asset) VALUES (?,?,?,?)", [oswapAaAddress, x_asset, y_asset, shares_asset]);
+		await Promise.all([saveSymbolForAsset(shares_asset), saveSymbolForAsset(x_asset), saveSymbolForAsset(y_asset)]);
 		resolve();
 	})
 }
@@ -388,36 +499,6 @@ function getStateVarsForPrefix(aa_address, prefix, start = '0', end = 'z', first
 }
 
 
-function getStateVars(aa_address){
-	return new Promise((resolve)=>{
-		network.requestFromLightVendor('light/get_aa_state_vars', {
-			address: aa_address
-		}, function(ws, request, objResponse){
-			if (objResponse.error){
-				console.log("Error when requesting state vars for " + aa_address + ": " + objResponse.error);
-				resolve({});
-			} else
-				resolve(objResponse);
-		});
-	});
-}
-
-function getJointFromStorageOrHub(unit){
-	return new Promise(async (resolve) => {
-
-		var joint = await storage.readUnit(unit);
-		if (joint)
-			return resolve(joint);
-		const network = require('ocore/network.js');
-		network.requestFromLightVendor('get_joint', unit,  function(ws, request, response){
-			if (response.joint){
-				resolve(response.joint.unit)
-			} else {
-				resolve();
-			}
-		});
-	});
-}
 
 
 process.on('unhandledRejection', up => { throw up });

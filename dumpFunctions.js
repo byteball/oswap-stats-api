@@ -63,7 +63,7 @@ async function dumpByAddress(date, address) {
 	for (let row of rows) {
 		await db.query(
 			"REPLACE INTO oswap_aa_balances (address, asset, balance, balance_date) VALUES (?,?,?,strftime('%Y-%m-%d %H:%M:%S', ?))",
-			[row.address, row.asset === null ? 'GBYTE' : row.asset, row.balance, date]);
+			[row.address, row.asset || 'base', row.balance, date]);
 	}
 }
 

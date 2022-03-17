@@ -14,6 +14,18 @@ exports.create = async function(){
 		open_price REAL, \n\
 		close_price REAL, \n\
 		start_timestamp TIMESTAMP NOT NULL, \n\
+		base_interest DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_interest DOUBLE NOT NULL DEFAULT 0, \n\
+		base_swap_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_swap_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		base_arb_profit_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_arb_profit_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		base_l_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_l_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		base_total_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_total_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		base_exit_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_exit_fee DOUBLE NOT NULL DEFAULT 0, \n\
 		UNIQUE (aa_address, base, quote, start_timestamp)\n\
 	)");
 
@@ -28,6 +40,18 @@ exports.create = async function(){
 		open_price REAL, \n\
 		close_price REAL, \n\
 		start_timestamp TIMESTAMP NOT NULL, \n\
+		base_interest DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_interest DOUBLE NOT NULL DEFAULT 0, \n\
+		base_swap_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_swap_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		base_arb_profit_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_arb_profit_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		base_l_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_l_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		base_total_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_total_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		base_exit_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_exit_fee DOUBLE NOT NULL DEFAULT 0, \n\
 		UNIQUE (aa_address, base, quote, start_timestamp)\n\
 	)");
 
@@ -58,9 +82,21 @@ exports.create = async function(){
 		base_qty INTEGER NOT NULL, \n\
 		type VARCHAR(40), \n\
 		timestamp TIMESTAMP NOT NULL, \n\
+		base_interest DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_interest DOUBLE NOT NULL DEFAULT 0, \n\
+		base_swap_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_swap_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		base_arb_profit_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_arb_profit_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		base_l_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_l_tax DOUBLE NOT NULL DEFAULT 0, \n\
+		base_total_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_total_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		base_exit_fee DOUBLE NOT NULL DEFAULT 0, \n\
+		quote_exit_fee DOUBLE NOT NULL DEFAULT 0, \n\
 		FOREIGN KEY (aa_address) REFERENCES oswap_aas(address)\n\
 	)");
-	await db.query("CREATE INDEX IF NOT EXISTS poolHistoryByPoolAddress ON pool_history(aa_address)");
+	await db.query("CREATE INDEX IF NOT EXISTS poolHistoryByPoolAddress ON pool_history(aa_address, timestamp)");
 
 	await db.query("CREATE TABLE IF NOT EXISTS oswap_assets (\n\
 		asset CHAR(44) NOT NULL PRIMARY KEY, \n\
@@ -78,9 +114,9 @@ exports.create = async function(){
 
 	await db.query("CREATE TABLE IF NOT EXISTS oswap_aas (\n\
 		address CHAR(32) NOT NULL PRIMARY KEY, \n\
-		swap_asset CHAR(44) NOT NULL, \n\
-		asset_0 CHAR(44) NOT NULL, \n\
-		asset_1 CHAR(44) NOT NULL \n\
+		shares_asset CHAR(44) NOT NULL, \n\
+		x_asset CHAR(44) NOT NULL, \n\
+		y_asset CHAR(44) NOT NULL \n\
 	)");
 	
 	await db.query("CREATE TABLE IF NOT EXISTS oswap_aa_balances ( \n\
@@ -90,9 +126,4 @@ exports.create = async function(){
 		balance_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n\
 		PRIMARY KEY (address, asset, balance_date))")
 
-	const rows = await db.query("SELECT name FROM pragma_table_info('oswap_aas')");
-	const exists = !!rows.find(r => r.name === 'fee');
-	if (!exists) {
-		await db.query('ALTER TABLE oswap_aas ADD fee INT')
-	}
 }
