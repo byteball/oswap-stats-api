@@ -139,7 +139,7 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 			api.refreshMarket(oswapAaAddress, shares_asset, y_asset);
 		}
 
-		await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp, base_interest, quote_interest, base_exit_fee, base_quote_fee) VALUES (?,?,?,?, ?,?,?,?, ?,?, ?,?, ?,?)",
+		await db.query("INSERT INTO pool_history (aa_address, response_unit, trigger_unit, trigger_address, base_asset, quote_asset, base_qty, quote_qty, type, timestamp, base_interest, quote_interest, base_exit_fee, quote_exit_fee) VALUES (?,?,?,?, ?,?,?,?, ?,?, ?,?, ?,?)",
 			[oswapAaAddress, response_unit, trigger_unit, trigger_address,
 				x_asset, y_asset, x_amount, y_amount,
 				'remove', timestamp,
