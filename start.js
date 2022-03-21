@@ -292,8 +292,9 @@ function getAmountFromAa(objResponseUnit, aa_address, asset = 'base'){
 }
 
 
-function addWatchedAas(){
-	network.addLightWatchedAa(conf.oswap_base_aa, null, console.log);
+function addWatchedAas() {
+	for (let oswap_base_aa of conf.oswap_base_aas)
+		network.addLightWatchedAa(oswap_base_aa, null, console.log);
 	network.addLightWatchedAa(conf.token_registry_aa_address, null, console.log);
 }
 
@@ -330,7 +331,7 @@ async function startDump() {
 function discoverOswapAas(){
 	return new Promise((resolve)=>{
 		network.requestFromLightVendor('light/get_aas_by_base_aas', {
-			base_aa: conf.oswap_base_aa
+			base_aas: conf.oswap_base_aas
 		}, async function(ws, request, arrResponse){
 			console.log(arrResponse);
 			const allAaAddresses = arrResponse.map(obj => obj.address);
@@ -440,7 +441,7 @@ function onAADefinition(objUnit){
 		var payload = message.payload;
 		if (message.app === 'definition' && payload.definition[1].base_aa){
 				const base_aa = payload.definition[1].base_aa;
-				if (base_aa == conf.oswap_base_aa){
+				if (conf.oswap_base_aas.includes(base_aa)){
 					const address = objectHash.getChash160(payload.definition);
 					const definition = payload.definition;
 					saveAndwatchOswapAa({ address, definition });
