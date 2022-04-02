@@ -60,9 +60,9 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 		let x_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, x_asset);
 		let y_amount = getAmountToAa(objTriggerUnit, oswapAaAddress, y_asset); 
 
-		if (x_amount > 0 && y_asset === 'base' && y_amount === bounce_fees)
+		if (y_amount > 0 && y_asset === 'base' && y_amount === bounce_fees)
 			y_amount -= bounce_fees;
-		if (y_amount > 0 && x_asset === 'base' && x_amount === bounce_fees)
+		if (x_amount > 0 && x_asset === 'base' && x_amount === bounce_fees)
 			x_amount -= bounce_fees;
 
 		let x_amount_out = getAmountFromAa(objResponseUnit, oswapAaAddress, x_asset);
@@ -259,7 +259,8 @@ function getAmountToAa(objTriggerUnit, aa_address, asset = 'base'){
 		if (message.app !== 'payment')
 			return;
 		const payload = message.payload;
-		if (asset == 'base' && payload.asset || asset != 'base' && asset !== payload.asset)
+		const a = payload.asset || 'base';
+		if (asset !== a)
 			return;
 		payload.outputs.forEach(function (output){
 			if (output.address === aa_address) {
