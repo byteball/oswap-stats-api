@@ -1,6 +1,6 @@
 ## Oswap-stats-api
 
-This O<sub>byte</sub> light node explores the DAG and provides API endpoints giving information about trades happening on Oswap.
+This O<sub>byte</sub> light node explores the DAG and provides API endpoints giving information about trades happening on [Oswap v2](https://v2.oswap.io). The API is used by https://v2-stats.oswap.io.
 
 
 #### Installation
@@ -18,10 +18,13 @@ By default the API is accessible at `http://localhost:4200` (`http://localhost:4
 
 #### Endpoints
 
+See some popular examples at https://v2-data.oswap.io.
 
 - */api/v1/assets*
 
-Return all assets having trades listed. To be noted that only assets having a symbol registered on [Obyte decentralized registry](https://github.com/byteball/token-registry-ui) will appear.
+Example https://v2-data.oswap.io/api/v1/assets
+
+Return all assets having trades listed. Only assets having a symbol registered on [Obyte decentralized registry](https://tokens.ooo) will appear.
 
 ```json
 {
@@ -46,11 +49,15 @@ Return all assets having trades listed. To be noted that only assets having a sy
 
 - */api/v1/summary*
 
+Example https://v2-data.oswap.io/api/v1/summary
+
 Return an array of all traded pairs with their characteristics and statistics for last 24 hours
 
 ```json
 [{
   "market_name": "LAMBO-GBYTE",
+  "address":"ELRBOANJWTDZC5JUPPZRJ7BP72ZGVLMT",
+  "full_market_name":"ELRBOANJWTDZC5JUPPZRJ7BP72ZGVLMT-LAMBO-GBYTE",
   "quote_symbol": "GBYTE",
   "base_symbol": "LAMBO",
   "quote_id": "base",
@@ -67,12 +74,16 @@ Return an array of all traded pairs with their characteristics and statistics fo
 
 - */api/v1/tickers*
 
+Example https://v2-data.oswap.io/api/v1/tickers
+
 Return an associative array  of all tickers sorted by markets
 
 ```json
 {
-  "LAMBO-GBYTE": {
+  "ELRBOANJWTDZC5JUPPZRJ7BP72ZGVLMT-LAMBO-GBYTE": {
     "market_name": "LAMBO-GBYTE",
+    "address":"ELRBOANJWTDZC5JUPPZRJ7BP72ZGVLMT",
+    "full_market_name":"ELRBOANJWTDZC5JUPPZRJ7BP72ZGVLMT-LAMBO-GBYTE",
     "quote_symbol": "GBYTE",
     "base_symbol": "LAMBO",
     "quote_id": "base",
@@ -87,36 +98,108 @@ Return an associative array  of all tickers sorted by markets
 ```
 ---------------------------------------
 
+- */api/v1/ticker_by_full_market_name/<full_market_name>*
+
+Example https://v2-data.oswap.io/api/v1/ticker_by_full_market_name/MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6-GBYTE-USDC
+
+Return a ticker for a specific market identified by the full market name.
+
+```json
+{
+  "address": "MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6",
+  "full_market_name": "MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6-GBYTE-USDC",
+  "market_name": "GBYTE-USDC",
+  "quote_symbol": "USDC",
+  "base_symbol": "GBYTE",
+  "quote_id": "S/oCESzEO8G2hvQuI6HsyPr0foLfKwzs+GU73nO9H40=",
+  "base_id": "base",
+  "lowest_price_24h": 21.569597918132715,
+  "highest_price_24h": 22.088048728151882,
+  "last_price": 21.723220563523515,
+  "quote_volume": 10447.2029,
+  "base_volume": 477.855551085
+}
+```
+
+---------------------------------------
+
 - */api/v1/ticker/<market_name>*
 
-Return a ticker for a specific market
+Example https://v2-data.oswap.io/api/v1/ticker/GBYTE-USDC
+
+Return a ticker for a specific market identified by base and quote tokens. If there are several markets for the base/quote pair, the market with most liquidity is automatically selected.
+
+```json
+{
+  "address": "MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6",
+  "full_market_name": "MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6-GBYTE-USDC",
+  "market_name": "GBYTE-USDC",
+  "quote_symbol": "USDC",
+  "base_symbol": "GBYTE",
+  "quote_id": "S/oCESzEO8G2hvQuI6HsyPr0foLfKwzs+GU73nO9H40=",
+  "base_id": "base",
+  "lowest_price_24h": 21.569597918132715,
+  "highest_price_24h": 22.088048728151882,
+  "last_price": 21.723220563523515,
+  "quote_volume": 10447.2029,
+  "base_volume": 477.855551085
+}
+```
+
+---------------------------------------
+
+- */api/v1/trades_by_full_market_name/<full_market_name>*
+
+Example https://v2-data.oswap.io/api/v1/trades_by_full_market_name/MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6-GBYTE-USDC
+
+Return an array of last 24h trades for a specific market identified by the full market name.
+
+```json
+[{
+  "full_market_name": "MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6-GBYTE-USDC",
+  "market_name": "GBYTE-USDC",
+  "price": 21.73712384723442,
+  "base_volume": 2.160525023,
+  "quote_volume": 46.9636,
+  "time": "2022-04-05T17:37:32.000Z",
+  "timestamp": 1649180252000,
+  "trade_id": "JbG9NDJoo77jffSUydV623qhufwjGI0EsEF2o9b8I1s=_0",
+  "type": "buy",
+  "explorer": "https://explorer.obyte.org/#JbG9NDJoo77jffSUydV623qhufwjGI0EsEF2o9b8I1s="
+}]
+```
 
 ---------------------------------------
 
 - */api/v1/trades/<market_name>*
 
-Return an array of last 24h trades for a specific market
+Example https://v2-data.oswap.io/api/v1/trades/GBYTE-USDC
+
+Return an array of the last 24h trades for a specific market identified by base and quote tokens. If there are several markets for the base/quote pair, the market with most liquidity is automatically selected.
 
 ```json
 [{
-  "market_name": "LAMBO-GBYTE",
-  "price": 3.2046504862368113,
-  "base_volume": 0.031204651,
-  "quote_volume": 0.1,
-  "time": "2020-09-17T05:57:30.000Z",
-  "timestamp": 1600322250000,
-  "trade_id": "5mcKjYbgXchjgSLNYSTsy5kIacA6G/FJV70VoTupBYg=_0",
+  "full_market_name": "MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6-GBYTE-USDC",
+  "market_name": "GBYTE-USDC",
+  "price": 21.73712384723442,
+  "base_volume": 2.160525023,
+  "quote_volume": 46.9636,
+  "time": "2022-04-05T17:37:32.000Z",
+  "timestamp": 1649180252000,
+  "trade_id": "JbG9NDJoo77jffSUydV623qhufwjGI0EsEF2o9b8I1s=_0",
   "type": "buy",
-  "explorer": "https://explorer.obyte.org/#5mcKjYbgXchjgSLNYSTsy5kIacA6G/FJV70VoTupBYg="
+  "explorer": "https://explorer.obyte.org/#JbG9NDJoo77jffSUydV623qhufwjGI0EsEF2o9b8I1s="
 }]
 ```
 
 ---------------------------------------
 
 
-- */api/v1/candles/\<market_name\>?period=\<period\>&start=\<start\>&end=\<end\>*
+- */api/v1/candles_by_full_market_name/\<full_market_name\>?period=\<period\>&start=\<start\>&end=\<end\>*
 
-Return an array of candlesticks for a time windows.
+Example https://v2-data.oswap.io/api/v1/candles_by_full_market_name/MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6-GBYTE-USDC?period=daily&start=2022-04-01&end=2022-04-03
+
+Return an array of candlesticks for a time window. The market is uniquely identified by its full market name.
 
 - **period**: `hourly` or `daily`
 - **start**: unix timestamp (`1601013600`), ISO8601 date (`2020-09-25`) or ISO8601 datetime (`2020-09-25T06:00:00.000Z`)
@@ -131,7 +214,7 @@ Return an array of candlesticks for a time windows.
     "lowest_price": 24.221561915710776,
     "open_price": 24.221561915710776,
     "close_price": 24.221561915710776,
-    "start_timestamp": "2020-09-28T00:00:00.000Z"
+    "start_timestamp": "2022-04-01T00:00:00.000Z"
 }, {
     "quote_volume": 0,
     "base_volume": 0,
@@ -139,7 +222,7 @@ Return an array of candlesticks for a time windows.
     "lowest_price": 24.221561915710776,
     "open_price": 24.221561915710776,
     "close_price": 24.221561915710776,
-    "start_timestamp": "2020-09-29T00:00:00.000Z"
+    "start_timestamp": "2022-04-02T00:00:00.000Z"
 }, {
     "quote_volume": 0.035434728,
     "base_volume": 0.0011,
@@ -147,13 +230,59 @@ Return an array of candlesticks for a time windows.
     "lowest_price": 32.19175,
     "open_price": 32.215553,
     "close_price": 32.19175,
-    "start_timestamp": "2020-09-30T00:00:00.000Z"
+    "start_timestamp": "2022-04-03T00:00:00.000Z"
 }]
 ```
+
+---------------------------------------
+
+
+- */api/v1/candles/\<market_name\>?period=\<period\>&start=\<start\>&end=\<end\>*
+
+Example https://v2-data.oswap.io/api/v1/candles/GBYTE-USDC?period=daily&start=2022-04-01&end=2022-04-03
+
+Return an array of candlesticks for a time window. The market is identified by base/quote pair. If there are several markets for the same base/quote pair, the market with most liquidity is automatically selected.
+
+- **period**: `hourly` or `daily`
+- **start**: unix timestamp (`1601013600`), ISO8601 date (`2020-09-25`) or ISO8601 datetime (`2020-09-25T06:00:00.000Z`)
+- **end**: unix timestamp (`1601013600`), ISO8601 date (`2020-09-25`) or ISO8601 datetime (`2020-09-25T06:00:00.000Z`)
+
+
+```json
+[{
+    "quote_volume": 0.3483240085253005,
+    "base_volume": 0.014380741,
+    "highest_price": 24.221561915710776,
+    "lowest_price": 24.221561915710776,
+    "open_price": 24.221561915710776,
+    "close_price": 24.221561915710776,
+    "start_timestamp": "2022-04-01T00:00:00.000Z"
+}, {
+    "quote_volume": 0,
+    "base_volume": 0,
+    "highest_price": 24.221561915710776,
+    "lowest_price": 24.221561915710776,
+    "open_price": 24.221561915710776,
+    "close_price": 24.221561915710776,
+    "start_timestamp": "2022-04-02T00:00:00.000Z"
+}, {
+    "quote_volume": 0.035434728,
+    "base_volume": 0.0011,
+    "highest_price": 32.215553,
+    "lowest_price": 32.19175,
+    "open_price": 32.215553,
+    "close_price": 32.19175,
+    "start_timestamp": "2022-04-03T00:00:00.000Z"
+}]
+```
+
+
 -------------------------
 - */api/v1/balances/\<address\>?start=\<start\>&end=\<end\>*
 
-Return an array of candlesticks for a time windows.
+Example https://v2-data.oswap.io/api/v1/balances/MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6?start=2022-01-01&end=2022-04-05
+
+Return an array of balances of a pool address for a time window.
 
 - **start**: ISO8601 date (`2020-09-25`)
 - **end**: ISO8601 date (`2020-09-25`)
@@ -161,25 +290,24 @@ Return an array of candlesticks for a time windows.
 ```json
 [
   {
-    "creation_date":"2021-08-03 23:59:59",
-    "GBYTE":1892256,
-    "/hYmnT8qDvPhKVQCbMLibB47qMu1DnKf0BKzYWe836c=":108580231,
-    "0IwAk71D5xFP0vTzwamKBwzad3I1ZUjZ1gdeB5OnfOg=":431304893,
-    "CuxoPhgLv9LW7VEPZbRXN7mQjiReuNhuT7S2xem1xTc=":881326092
+    "balance_date": "2022-04-01 23:59:59",
+    "S/oCESzEO8G2hvQuI6HsyPr0foLfKwzs+GU73nO9H40=": 246631738,
+    "base": 1440240608161
   },
   {
-    "creation_date":"2021-08-04 23:59:59",
-    "GBYTE":1892256,
-    "/hYmnT8qDvPhKVQCbMLibB47qMu1DnKf0BKzYWe836c=":108580231,
-    "0IwAk71D5xFP0vTzwamKBwzad3I1ZUjZ1gdeB5OnfOg=":431304893,
-    "CuxoPhgLv9LW7VEPZbRXN7mQjiReuNhuT7S2xem1xTc=":881326092
+    "balance_date": "2022-04-02 23:59:59",
+    "S/oCESzEO8G2hvQuI6HsyPr0foLfKwzs+GU73nO9H40=": 242589827,
+    "base": 1459700798868
   },
   {
-    "creation_date":"2021-08-05 23:59:59",
-    "GBYTE":1892256,
-    "/hYmnT8qDvPhKVQCbMLibB47qMu1DnKf0BKzYWe836c=":108580231,
-    "0IwAk71D5xFP0vTzwamKBwzad3I1ZUjZ1gdeB5OnfOg=":431304893,
-    "CuxoPhgLv9LW7VEPZbRXN7mQjiReuNhuT7S2xem1xTc=":881326092
+    "balance_date": "2022-04-03 23:59:59",
+    "S/oCESzEO8G2hvQuI6HsyPr0foLfKwzs+GU73nO9H40=": 279437493,
+    "base": 1291139545344
+  },
+  {
+    "balance_date": "2022-04-04 23:59:59",
+    "S/oCESzEO8G2hvQuI6HsyPr0foLfKwzs+GU73nO9H40=": 277960876,
+    "base": 1300417719368
   }
 ]
 ```
