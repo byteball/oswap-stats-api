@@ -8,6 +8,23 @@ const getBalancesByAddress = require('./helpers/getBalancesByAddress');
 const updateBalancesForOneAddress = require('./updateBalancesForOneAddress')
 const getExchangeRates = require('./rates');
 
+const description = `Oswap.io is an automated token exchange for Obyte. The prices on the DEX are set automatically using a mechanism called “constant product market maker”. Oswap.io earns better yields for liquidity providers than other DEXes and offers leverage trading without liquidations for traders.
+ 
+Main features:
+- leverage trading without liquidations
+- arbitrageur profits are redistributed in favor of liquidity providers (LPs), hence they earn better yields
+- option to amplify liquidity and therefore reduce slippage and increase LP earnings
+- LPs also earn interest by lending to leverage traders
+- LPs also charge a tax from leverage traders when they close their leveraged positions with profit
+- option to create pools optimized for stablecoin pairs. They better utilize liquidity hence make better yields for LPs. LPs can adjust the stablecoin trading range by governance.
+- almost all pool parameters can be changed by governance of liquidity providers
+- anybody can create new trading pairs without any restrictions through a simple user interface
+ 
+The DEX runs on Obyte – a DAG based DeFi platform. Unlike blockchains, DAG is not subject to miner manipulation, sandwich attacks, and other forms of miner extractable value (MEV).
+ 
+The DEX is powered by several Autonomous Agents – self-executing autonomous programs running on the DAG. Their code is open-source, permanently published on the DAG, and immutable. There are no admin roles and no upgradability. Nobody, even the creators of Oswap, can interfere with its operation.
+`;
+
 const assocTickersByAssets = {};
 const assocTickersByMarketNames = {};
 
@@ -621,6 +638,28 @@ async function start(){
 		return response.send(getLandingPage());
 	});
 
+	app.get('/api/v1/info', function(request, response){
+		return response.send({
+			name: 'Oswap',
+			description,
+			location: 'Worldwide',
+			logo: 'https://v2.oswap.io/img/logo.4fab4f31.svg',
+			website: 'https://v2.oswap.io',
+			twitter: 'ObyteOrg',
+			version: '1.0',
+			capability: {
+				markets: true,
+				trades: true,
+				tradesByTimestamp: false,
+				tradesSocket: false,
+				orders: false,
+				ordersSocket: false,
+				ordersSnapshot: true,
+				candles: true,
+			}
+		});
+	});
+
 	app.get('/api/v1/assets', async function(request, response){
 		await waitUntilRefreshFinished();
 		return response.send(assocAssetsBySymbols);
@@ -685,6 +724,14 @@ async function start(){
 		const end_time = parseDateTime(request.query.end, true);
 		
 		await sendCandlesByFullMarketName(fullMarketName, period, start_time, end_time, response);
+	});
+
+	app.get('/api/v1/orders/snapshot', function(request, response){
+		return response.send({
+			bids: [],
+			asks: [],
+			timestamp: new Date().toISOString(),
+		});
 	});
 
 	app.get('/api/v1/balances/:address', async function (request, response) {
