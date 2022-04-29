@@ -221,7 +221,7 @@ async function refreshTrades(address, base, quote){
 
 }
 
-async function getTradesByFullMarketNameAndTime(fullMarketName, responseUnit) {
+async function getTradesByFullMarketNameAndResponseUnit(fullMarketName, responseUnit) {
 	const ticker = assocTickersByMarketNames[fullMarketName];
 	const trades = [];
 	
@@ -764,7 +764,7 @@ async function start(){
 		if (request.query.since) {
 			since = request.query.since.replace(/\s/g, '+');
 		}
-		const trades = await getTradesByFullMarketNameAndTime(fullMarketName, since);
+		const trades = await getTradesByFullMarketNameAndResponseUnit(fullMarketName, since);
 		
 		response.send(trades);
 	});
