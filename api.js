@@ -240,7 +240,7 @@ async function getTradesByFullMarketNameAndResponseUnit(fullMarketName, response
 	const rows = await db.query('SELECT rowid, quote_qty*1.0/base_qty AS price,base_qty AS base_volume,quote_qty AS quote_volume,timestamp,response_unit,indice,type FROM trades ' +
 		'WHERE rowid > ?' +
 		'AND quote=? AND base=? AND aa_address=? ' +
-		'ORDER BY rowid ASC LIMIT 10', 
+		'ORDER BY rowid ASC LIMIT 100', 
 		[rowid, ticker.quote_id, ticker.base_id, ticker.address]);
 
 	rows.forEach(function(row){
