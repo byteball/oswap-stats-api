@@ -202,7 +202,7 @@ async function refreshTrades(address, base, quote){
 
 	trades.length = 0; // we clear array without deferencing it
 
-	var rows = await db.query("SELECT quote_qty*1.0/base_qty AS price,base_qty AS base_volume,quote_qty AS quote_volume,timestamp,response_unit,indice,type,timestamp FROM trades \n\
+	var rows = await db.query("SELECT quote_qty*1.0/base_qty AS price,base_qty AS base_volume,quote_qty AS quote_volume,timestamp,response_unit,indice,type FROM trades \n\
 	WHERE timestamp > ? AND quote=? AND base=? AND aa_address=? ORDER BY timestamp DESC", [getOneDayAgoDate(), quote, base, address]);
 	rows.forEach(function(row){
 		trades.push({
@@ -219,6 +219,39 @@ async function refreshTrades(address, base, quote){
 		});
 	});
 
+}
+
+async function getTradesByFullMarketNameAndResponseUnit(fullMarketName, responseUnit) {
+	const ticker = assocTickersByMarketNames[fullMarketName];
+	const trades = [];
+	
+	let rowid = 0;
+	if (responseUnit) {
+		const rows = await db.query("SELECT rowid FROM trades WHERE response_unit = ?", [responseUnit]);
+		console.log(rows);
+		if (rows.length) {
+			rowid = rows[0].rowid;
+		}
+	}
+	
+	const rows = await db.query('SELECT rowid, quote_qty*1.0/base_qty AS price,base_qty AS base_volume,quote_qty AS quote_volume,timestamp,response_unit,indice,type FROM trades ' +
+		'WHERE rowid > ?' +
+		'AND quote=? AND base=? AND aa_address=? ' +
+		'ORDER BY rowid ASC LIMIT 10', 
+		[rowid, ticker.quote_id, ticker.base_id, ticker.address]);
+
+	rows.forEach(function(row){
+		trades.push({
+			id: row.response_unit,
+			price: String(row.price * getDecimalsPriceCoefficient(ticker.base_id, ticker.quote_id)),
+			amount: String(row.base_volume / 10 ** assocAssets[ticker.base_id].decimals),
+			amount_quote: String(row.quote_volume / 10 ** assocAssets[ticker.quote_id].decimals),
+			side: row.type,
+			timestamp: row.timestamp,
+		});
+	});
+	
+	return trades;
 }
 
 async function refreshTicker(address, base, quote){
@@ -594,13 +627,13 @@ async function sendTickerByFullMarketName(fullMarketName, response) {
 		return response.status(400).send('Unknown market');
 }
 
-async function sendTradesByFullMarketName(fullMarketName, response) {
+async function getTradesByFullMarketName(fullMarketName) {
 	if (fullMarketName && assocTradesByMarketNames[fullMarketName]){
 		await waitUntilRefreshFinished();
-		return response.send(assocTradesByMarketNames[fullMarketName]);
+		return assocTradesByMarketNames[fullMarketName]
 	}
 	else
-		return response.status(400).send('Unknown market');
+		return null;
 }
 
 async function sendCandlesByFullMarketName(fullMarketName, period, start_time, end_time, response) {
@@ -673,6 +706,21 @@ async function start(){
 		return response.send(arrSummary);
 	});
 
+	app.get('/api/v1/markets', async function(request, response){
+		await waitUntilRefreshFinished();
+		const arrSummary = [];
+		for(var key in assocTickersByMarketNames) {
+			let market = { ...assocTickersByMarketNames[key] };
+			market.id = market.full_market_name;
+			market.type = "spot";
+			market.base = market.base_symbol;
+			market.quote = market.quote_id;
+			market.market_url = conf.swapURL + market.address;
+			arrSummary.push(market);
+		}
+		return response.send(arrSummary);
+	});
+
 	app.get('/api/v1/tickers', async function(request, response){
 		await waitUntilRefreshFinished();
 		return response.send(assocTickersByMarketNames);
@@ -702,8 +750,23 @@ async function start(){
 
 	app.get('/api/v1/trades_by_full_market_name/:fullMarketName', async function(request, response){
 		const fullMarketName = request.params.fullMarketName;
+		const tradesByFullMarketName = await getTradesByFullMarketName(fullMarketName);
+		if (!tradesByFullMarketName) {
+			return response.status(400).send('Unknown market');
+		}
 		
-		await sendTradesByFullMarketName(fullMarketName, response);
+		response.send(tradesByFullMarketName);
+	});
+	
+	app.get('/api/v1/trades', async function(request, response){
+		const fullMarketName = request.query.market;
+		let since = null;
+		if (request.query.since) {
+			since = request.query.since.replace(/\s/g, '+');
+		}
+		const trades = await getTradesByFullMarketNameAndResponseUnit(fullMarketName, since);
+		
+		response.send(trades);
 	});
 
 	app.get('/api/v1/candles/:marketName', async function(request, response){
@@ -728,8 +791,8 @@ async function start(){
 
 	app.get('/api/v1/orders/snapshot', function(request, response){
 		return response.send({
-			bids: [],
-			asks: [],
+			bids: [[0, 0]],
+			asks: [[0, 0]],
 			timestamp: new Date().toISOString(),
 		});
 	});
