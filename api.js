@@ -223,6 +223,9 @@ async function refreshTrades(address, base, quote){
 
 async function getTradesByFullMarketNameAndResponseUnit(fullMarketName, responseUnit) {
 	const ticker = assocTickersByMarketNames[fullMarketName];
+	if (!ticker) {
+		return [];
+	}
 	const trades = [];
 	
 	let rowid = 0;
