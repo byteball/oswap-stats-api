@@ -221,33 +221,38 @@ async function refreshTrades(address, base, quote){
 
 }
 
-async function getTradesByFullMarketNameAndTime(fullMarketName, time) {
-	if (!time) {
-		time = (new Date()).toISOString();
-	}
-	
+async function getTradesByFullMarketNameAndTime(fullMarketName, responseUnit) {
 	const ticker = assocTickersByMarketNames[fullMarketName];
 	const trades = [];
 	
+	let rowid = 0;
+	if (responseUnit) {
+		
+		const rows = await db.query("SELECT rowid FROM trades WHERE response_unit = ?", [responseUnit]);
+		console.log(rows);
+		if (rows.length) {
+			rowid = rows[0].rowid;
+		}
+	}
+	
 	const rows = await db.query('SELECT rowid, quote_qty*1.0/base_qty AS price,base_qty AS base_volume,quote_qty AS quote_volume,timestamp,response_unit,indice,type FROM trades ' +
-		'WHERE "timestamp" IN (SELECT DISTINCT "timestamp" FROM trades WHERE "timestamp" < ? AND quote=? AND base=? AND aa_address=? ORDER BY timestamp DESC LIMIT 10) ' +
+		'WHERE rowid > ?' +
 		'AND quote=? AND base=? AND aa_address=? ' +
-		'ORDER BY timestamp DESC', 
-		[time, ticker.quote_id, ticker.base_id, ticker.address, ticker.quote_id, ticker.base_id, ticker.address]);
+		'ORDER BY rowid ASC LIMIT 10', 
+		[rowid, ticker.quote_id, ticker.base_id, ticker.address]);
 
 	rows.forEach(function(row){
 		trades.push({
-			id: row.timestamp,
+			id: encodeURIComponent(row.response_unit),
 			price: String(row.price * getDecimalsPriceCoefficient(ticker.base_id, ticker.quote_id)),
 			amount: String(row.base_volume / 10 ** assocAssets[ticker.base_id].decimals),
 			amount_quote: String(row.quote_volume / 10 ** assocAssets[ticker.quote_id].decimals),
 			side: row.type,
-			order: row.response_unit + '_' + row.indice,
 			timestamp: row.timestamp,
 		});
 	});
 	
-	return trades;
+	return trades.reverse();
 }
 
 async function refreshTicker(address, base, quote){
@@ -757,7 +762,6 @@ async function start(){
 	app.get('/api/v1/trades', async function(request, response){
 		const fullMarketName = request.query.market;
 		const since = request.query.since || null;
-		console.error(request.query);
 		const trades = await getTradesByFullMarketNameAndTime(fullMarketName, since);
 		
 		response.send(trades);
