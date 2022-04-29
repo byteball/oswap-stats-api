@@ -224,7 +224,7 @@ async function refreshTrades(address, base, quote){
 async function getTradesByFullMarketNameAndResponseUnit(fullMarketName, responseUnit) {
 	const ticker = assocTickersByMarketNames[fullMarketName];
 	if (!ticker) {
-		return [];
+		return null;
 	}
 	const trades = [];
 	
@@ -773,6 +773,9 @@ async function start(){
 			since = request.query.since.replace(/\s/g, '+');
 		}
 		const trades = await getTradesByFullMarketNameAndResponseUnit(fullMarketName, since);
+		if (!trades) {
+			return response.status(400).send('Unknown market');
+		}
 		
 		response.send(trades);
 	});
