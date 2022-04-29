@@ -227,7 +227,6 @@ async function getTradesByFullMarketNameAndTime(fullMarketName, responseUnit) {
 	
 	let rowid = 0;
 	if (responseUnit) {
-		
 		const rows = await db.query("SELECT rowid FROM trades WHERE response_unit = ?", [responseUnit]);
 		console.log(rows);
 		if (rows.length) {
@@ -243,7 +242,7 @@ async function getTradesByFullMarketNameAndTime(fullMarketName, responseUnit) {
 
 	rows.forEach(function(row){
 		trades.push({
-			id: encodeURIComponent(row.response_unit),
+			id: row.response_unit,
 			price: String(row.price * getDecimalsPriceCoefficient(ticker.base_id, ticker.quote_id)),
 			amount: String(row.base_volume / 10 ** assocAssets[ticker.base_id].decimals),
 			amount_quote: String(row.quote_volume / 10 ** assocAssets[ticker.quote_id].decimals),
@@ -252,7 +251,7 @@ async function getTradesByFullMarketNameAndTime(fullMarketName, responseUnit) {
 		});
 	});
 	
-	return trades.reverse();
+	return trades;
 }
 
 async function refreshTicker(address, base, quote){
@@ -761,7 +760,10 @@ async function start(){
 	
 	app.get('/api/v1/trades', async function(request, response){
 		const fullMarketName = request.query.market;
-		const since = request.query.since || null;
+		let since = null;
+		if (request.query.since) {
+			since = request.query.since.replace(/\s/g, '+');
+		}
 		const trades = await getTradesByFullMarketNameAndTime(fullMarketName, since);
 		
 		response.send(trades);
