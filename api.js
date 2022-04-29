@@ -745,7 +745,12 @@ async function start(){
 		const address = await getTheMostLiquidAddress(marketName);
 		const fullMarketName = address ? address + getMarketNameSeparator() + marketName : false;
 		
-		await sendTradesByFullMarketName(fullMarketName, response);
+		const tradesByFullMarketName = await getTradesByFullMarketName(fullMarketName);
+		if (!tradesByFullMarketName) {
+			return response.status(400).send('Unknown market');
+		}
+		
+		response.send(tradesByFullMarketName);
 	});
 
 	app.get('/api/v1/trades_by_full_market_name/:fullMarketName', async function(request, response){
