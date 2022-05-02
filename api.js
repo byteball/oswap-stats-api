@@ -861,7 +861,13 @@ async function start(){
 
 	app.get('/api/v1/orders/snapshot', async function (request, response) {
 		const fullMarketName = request.query.market;
-		const { bids, asks } = await getEmulatedOrderBook(fullMarketName);
+		try {
+			var { bids, asks } = await getEmulatedOrderBook(fullMarketName);
+		}
+		catch (e) {
+			console.log(`getEmulatedOrderBook(${fullMarketName}) failed`, e);
+			return response.status(400).send('market not found');
+		}
 		return response.send({
 			bids,
 			asks,
