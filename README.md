@@ -194,6 +194,27 @@ Return an array of the last 24h trades for a specific market identified by base 
 
 ---------------------------------------
 
+- */api/v1/trades?market=<full_market_name>*
+
+Example https://v2-data.oswap.io/api/v1/trades?market=MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6-GBYTE-USDC
+
+Return an array of _all_ trades for the specified market. The trades are sorted from old to new and paginated using the `since` parameter, 100 trades per page.
+
+- **since**: the `id` of the last seen trade. The trades starting with (but not including) this trade will be returned. If the `since` parameter is not passed, the first 100 trades since the market's inception will be returned.
+
+```json
+[{
+  "id":"lfQQrWQJ+HgMdUM/GQ5eqAPdzzKlBbeSwsbE7raoZe4=",
+  "price":"20.064322577162415",
+  "amount":"0.692278543",
+  "amount_quote":"13.8901",
+  "side":"buy",
+  "timestamp":"2022-03-23T03:13:45.000Z"
+}]
+```
+
+---------------------------------------
+
 
 - */api/v1/candles_by_full_market_name/\<full_market_name\>?period=\<period\>&start=\<start\>&end=\<end\>*
 
@@ -274,6 +295,29 @@ Return an array of candlesticks for a time window. The market is identified by b
     "close_price": 32.19175,
     "start_timestamp": "2022-04-03T00:00:00.000Z"
 }]
+```
+
+---------------------------------------
+
+
+- */api/v1/orders/snapshot/?market=\<full_market_name\>*
+
+Example https://v2-data.oswap.io/api/v1/orders/snapshot?market=MBTF5GG44S3ARJHIZH3DEAB4DGUCHCF6-GBYTE-USDC
+
+Return a virtual orderbook. There are no real orders since it is an AMM but the virtual orderbook represents the depth of the market. The returned `bids` and `asks` are arrays of [`price`, `amount`] tuples, `amount` being in the base currency.
+
+```json
+{
+  "bids":[
+    [17.548487909638002, 2.567216438],
+    [17.51346098766268, 5.100309889]
+  ],
+  "asks":[
+    [17.583602433945185, 2.574063898],
+    [17.618769638813077, 5.170418098]
+  ],
+  "timestamp": "2022-05-02T09:26:34.728Z"
+}
 ```
 
 

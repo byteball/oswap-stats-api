@@ -7,6 +7,9 @@ const addZero = require('./helpers/addZero');
 const getBalancesByAddress = require('./helpers/getBalancesByAddress');
 const updateBalancesForOneAddress = require('./updateBalancesForOneAddress')
 const getExchangeRates = require('./rates');
+const _ = require('lodash');
+const { getPoolState, getPrice, $swap, chargeInterest, setLogger } = require('oswap-v2-sdk');
+const dag = require('aabot/dag.js');
 
 const description = `Oswap.io is an automated token exchange for Obyte. The prices on the DEX are set automatically using a mechanism called “constant product market maker”. Oswap.io earns better yields for liquidity providers than other DEXes and offers leverage trading without liquidations for traders.
  
@@ -658,6 +661,62 @@ async function sendCandlesByFullMarketName(fullMarketName, period, start_time, e
 		return response.status(400).send('Unknown market');
 }
 
+async function getEmulatedOrderBook(fullMarketName) {
+	const [oswapAaAddress] = fullMarketName.split('-');
+	const params = await dag.readAAParams(oswapAaAddress);
+	const stateVars = await dag.readAAStateVars(oswapAaAddress);
+	const poolState = getPoolState(params, stateVars);
+	chargeInterest(poolState);
+	const price = getPrice(poolState);
+	const { pool_props: { x_asset, y_asset } } = poolState;
+	const price_coef = getDecimalsPriceCoefficient(x_asset, y_asset);
+	const base_coef = 10 ** assocAssets[x_asset].decimals;
+	let bids = [], asks = [];
+	const price_distance = 1.002; // 0.2%
+
+	let ask_price = price * 1.001;
+	let prev_net_amount_X = 0;
+	while (ask_price <= price * 1.2) {
+		const { balances, leveraged_balances, profits, recent, shifts: { x0, y0 }, pool_props } = _.cloneDeep(poolState);
+		try {
+			var { net_amount_X } = $swap(balances, leveraged_balances, profits, recent, x0, y0, true, 0, ask_price, -1, 0, 'ADDRESS', pool_props);
+		}
+		catch (e) {
+			console.log(`${fullMarketName} ask price ${ask_price} failed`, e);
+			break;
+		}
+		const size = net_amount_X - prev_net_amount_X;
+		if (size < 0)
+			throw Error(`${fullMarketName} ask ${ask_price} size=${size}`);
+		prev_net_amount_X = net_amount_X;
+		asks.push([ask_price * price_coef, size / base_coef]);
+		ask_price *= price_distance;
+	}
+
+	let bid_price = price / 1.001;
+	let prev_amount_Y = 0;
+	while (bid_price >= price / 1.2) {
+		const { balances, leveraged_balances, profits, recent, shifts: { x0, y0 }, pool_props } = _.cloneDeep(poolState);
+		try {
+			var { amount_Y } = $swap(balances, leveraged_balances, profits, recent, x0, y0, false, 0, 1 / bid_price, -1, 0, 'ADDRESS', pool_props);
+		}
+		catch (e) {
+			console.log(`${fullMarketName} bid price ${bid_price} failed`, e);
+			break;
+		}
+		const size = amount_Y - prev_amount_Y;
+		if (size < 0)
+			throw Error(`${fullMarketName} bid ${bid_price} size=${size}`);
+		prev_amount_Y = amount_Y;
+		bids.push([bid_price * price_coef, size / base_coef]);
+		bid_price /= price_distance;
+	}
+
+	return { bids, asks };
+}
+
+
+
 let started = false;
 
 async function start(){
@@ -691,7 +750,7 @@ async function start(){
 				orders: false,
 				ordersSocket: false,
 				ordersSnapshot: true,
-				candles: true,
+				candles: false,
 			}
 		});
 	});
@@ -800,10 +859,12 @@ async function start(){
 		await sendCandlesByFullMarketName(fullMarketName, period, start_time, end_time, response);
 	});
 
-	app.get('/api/v1/orders/snapshot', function(request, response){
+	app.get('/api/v1/orders/snapshot', async function (request, response) {
+		const fullMarketName = request.query.market;
+		const { bids, asks } = await getEmulatedOrderBook(fullMarketName);
 		return response.send({
-			bids: [[0, 0]],
-			asks: [[0, 0]],
+			bids,
+			asks,
 			timestamp: new Date().toISOString(),
 		});
 	});
