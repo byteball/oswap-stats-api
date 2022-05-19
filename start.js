@@ -30,7 +30,8 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 	const x_asset = objInfos.x_asset;
 	const y_asset = objInfos.y_asset;
 
-	const { trigger_unit, trigger_address, response_unit, objResponseUnit, response: { responseVars } } = objResponse;
+	const { trigger_unit, trigger_address, response_unit, response: { responseVars } } = objResponse;
+	let { objResponseUnit } = objResponse;
 
 	if (!responseVars)
 		return console.log(`no resp vars in response from ${trigger_unit}`);
@@ -48,6 +49,12 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 	const objTriggerUnit = await storage.readUnit(trigger_unit);
 	if (!objTriggerUnit)
 		throw Error('trigger unit not found ' + trigger_unit);
+
+	if (response_unit && !objResponseUnit) {
+		console.log(`trigger ${trigger_unit} have response unit ${response_unit} but no objResponseUnit`);
+		objResponseUnit = await dag.readJoint(response_unit);
+		console.log(`trigger ${trigger_unit} got objResponseUnit`, objResponseUnit);
+	}
 
 	const timestamp = new Date(objResponse.timestamp * 1000).toISOString();
 
