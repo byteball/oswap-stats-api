@@ -52,7 +52,8 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 
 	if (response_unit && !objResponseUnit) {
 		console.log(`trigger ${trigger_unit} have response unit ${response_unit} but no objResponseUnit`);
-		objResponseUnit = await dag.readJoint(response_unit);
+		const joint = await dag.readJoint(response_unit);
+		objResponseUnit = joint.unit;
 		console.log(`trigger ${trigger_unit} got objResponseUnit`, objResponseUnit);
 	}
 
