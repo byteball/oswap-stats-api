@@ -10,6 +10,9 @@ const getExchangeRates = require('./rates');
 const _ = require('lodash');
 const { getPoolState, getPrice, $swap, chargeInterest, setLogger } = require('oswap-v2-sdk');
 const dag = require('aabot/dag.js');
+const path = require("path");
+const { existsSync, readFileSync, watchFile } = require("fs");
+const { readFile } = require("fs").promises;
 
 const description = `Oswap.io is an automated token exchange for Obyte. The prices on the DEX are set automatically using a mechanism called “constant product market maker”. Oswap.io earns better yields for liquidity providers than other DEXes and offers leverage trading without liquidations for traders.
  
@@ -30,6 +33,7 @@ The DEX is powered by several Autonomous Agents – self-executing autonomous pr
 
 const assocTickersByAssets = {};
 const assocTickersByMarketNames = {};
+const assocMarketNameByAddress = {};
 
 const assocTradesByAssets = {};
 const assocTradesByMarketNames = {};
@@ -54,6 +58,7 @@ async function initMarkets(){
 	for (let i=0; i < rows.length; i++){
 		await refreshMarket(rows[i].address, rows[i].x_asset, rows[i].y_asset)
 	}
+	console.error('init markets: done')
 }
 
 function getSymbol(asset) {
@@ -155,6 +160,8 @@ async function createTicker(address, base, quote){
 
 		assocTickersByAssets[getKeyName(address, base, quote)] = ticker;
 		assocTickersByMarketNames[full_market_name] = ticker;
+
+		assocMarketNameByAddress[address] = market_name;
 
 		const trades = [];
 		assocTradesByAssets[getKeyName(address, base, quote)] = trades;
@@ -715,7 +722,17 @@ async function getEmulatedOrderBook(fullMarketName) {
 	return { bids, asks };
 }
 
+const pathToIndex = path.join(__dirname, conf.pathToDist, 'index.html');
+if (!existsSync(pathToIndex)) {
+	throw Error('index.html not found');
+}
+let indexFile = readFileSync(pathToIndex).toString();
+const desc = "Oswap pool statistics";
 
+watchFile(pathToIndex, async () => {
+	console.error('index.html changed');
+	indexFile = (await readFile(pathToIndex)).toString();
+});
 
 let started = false;
 
@@ -729,7 +746,24 @@ async function start(){
 	await initMarkets();
 	setInterval(initMarkets, 3600 * 1000); // compute last hourly candle even when no trade happened
 
-	app.get('/', async function(request, response){
+	app.get('/', (req, res) => {
+		const html = indexFile.replaceAll('{og_text}', desc);
+		res.send(html);
+	});
+	
+	app.get('/pool/:address', (req, res) => {
+		let name = req.params.address;
+		if (assocMarketNameByAddress[name]) {
+			name = assocMarketNameByAddress[name];
+		}
+		
+		let title = `Pool ${name} statistics, transactions and rates | ` +  desc;
+		
+		const html = indexFile.replaceAll('{og_text}', title);
+		res.send(html);
+	});
+	
+	app.get('/api/', async function(request, response){
 		return response.send(getLandingPage());
 	});
 

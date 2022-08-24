@@ -8,6 +8,8 @@ exports.bNoPassphrase = true;
 exports.apiPort = process.env.testnet ? 4201 : 4200;
 exports.swapURL = 'https://v2.oswap.io/#/swap/'
 
+exports.pathToDist = process.env.pathToDist || './dist/';
+
 exports.hub = process.env.testnet ? 'obyte.org/bb-test' : 'obyte.org/bb';
 exports.explorer_base_url = process.env.testnet ? 'https://testnetexplorer.obyte.org/#' : 'https://explorer.obyte.org/#';
 

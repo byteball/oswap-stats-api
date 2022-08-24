@@ -356,3 +356,21 @@ Return an array of balances of a pool address for a time window.
 ]
 ```
 
+### Nginx
+```text
+server {
+	listen 80;
+	server_name localhost;
+
+	location / {
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection "upgrade";
+		proxy_pass http://127.0.0.1:4200;
+	}
+
+	location ~ \.(js|ico|svg|css|png) {
+		root /path/to/dist;
+	}
+}
+```
