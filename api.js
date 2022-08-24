@@ -747,7 +747,7 @@ async function start(){
 	setInterval(initMarkets, 3600 * 1000); // compute last hourly candle even when no trade happened
 
 	app.get('/', (req, res) => {
-		const html = indexFile.replaceAll('{og_text}', desc);
+		const html = indexFile.replace(/\{og_text\}/g, desc);
 		res.send(html);
 	});
 	
@@ -759,7 +759,7 @@ async function start(){
 		
 		let title = `Pool ${name} statistics, transactions and rates | ` +  desc;
 		
-		const html = indexFile.replaceAll('{og_text}', title);
+		const html = indexFile.replace(/\{og_text\}/g, title);
 		res.send(html);
 	});
 	
