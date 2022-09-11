@@ -30,8 +30,8 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 	const x_asset = objInfos.x_asset;
 	const y_asset = objInfos.y_asset;
 
-	const { trigger_unit, trigger_address, response_unit, response: { responseVars } } = objResponse;
-	let { objResponseUnit } = objResponse;
+	const { trigger_unit, trigger_address, response: { responseVars } } = objResponse;
+	let { response_unit, objResponseUnit } = objResponse;
 
 	if (!responseVars)
 		return console.log(`no resp vars in response from ${trigger_unit}`);
@@ -223,6 +223,9 @@ async function treatResponseFromOswapAA(objResponse, objInfos){
 		const quote = token === 'x' ? x_asset : y_asset;
 		const base_qty = Math.abs(shares);
 		const quote_qty = Math.abs(amount);
+
+		if (!response_unit) // if no response, use trigger unit as ID
+			response_unit = trigger_unit;
 
 		await db.query("INSERT INTO trades (aa_address, response_unit, base, quote, base_qty, quote_qty, type, timestamp) VALUES (?,?,?,?,?,?,?,?)", 
 		[oswapAaAddress, response_unit, base, quote, base_qty, quote_qty, amount > 0 ? 'buy' : 'sell', timestamp]);
