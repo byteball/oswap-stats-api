@@ -540,10 +540,14 @@ async function getAPY7d(endTime, base_id, quote_id, address, balances) {
 	const totals = await getTotals('daily', startTime, endTime, address);
 	const marketCap = getMarketcap(balances, base_id, quote_id);
 
+	let earnings7d = { total: 0, swap_fee: 0, arb_profit_tax: 0, l_tax: 0, exit_fee: 0, interest: 0 };
+
 	let base_label = base_id === 'base' ? 'GBYTE' : base_id;
 	let quote_label = quote_id === 'base' ? 'GBYTE' : quote_id;
 	let base_rate = getExchangeRates()[`${base_label}_USD`];
 	let quote_rate = getExchangeRates()[`${quote_label}_USD`];
+	if (!totals.quote_volume && (!base_rate || !quote_rate))
+		return { apy: 0, earnings7d };
 	if (!base_rate)
 		throw Error(`no rate for ` + base_id);
 	if (!quote_rate)
@@ -552,7 +556,6 @@ async function getAPY7d(endTime, base_id, quote_id, address, balances) {
 
 	delete totals.base_total_fee;
 	delete totals.quote_total_fee;
-	let earnings7d = { total: 0, swap_fee: 0, arb_profit_tax: 0, l_tax: 0, exit_fee: 0, interest: 0 };
 	for (let var_name in totals) {
 		if (var_name.endsWith('_volume'))
 			continue;
