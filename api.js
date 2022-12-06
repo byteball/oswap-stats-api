@@ -80,10 +80,14 @@ async function initAssetsCache(){
 	for (let { address, x_asset, y_asset } of aa_rows) {
 		const x_info = assocAssets[x_asset];
 		const y_info = assocAssets[y_asset];
-		if (!x_info)
-			throw Error(`no info for ` + x_asset);
-		if (!y_info)
-			throw Error(`no info for ` + y_asset);
+		if (!x_info) {
+			console.log(`no info for ` + x_asset);
+			continue;
+		}
+		if (!y_info) {
+			console.log(`no info for ` + y_asset);
+			continue;
+		}
 		const x_symbol = x_info.symbol;
 		const y_symbol = y_info.symbol;
 		for (let L of [2, 5, 10, 20, 50, 100]) {
