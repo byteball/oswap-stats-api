@@ -676,6 +676,7 @@ async function sendCandlesByFullMarketName(fullMarketName, period, start_time, e
 }
 
 async function getEmulatedOrderBook(fullMarketName) {
+	console.log('getEmulatedOrderBook', fullMarketName);
 	const [oswapAaAddress] = fullMarketName.split('-');
 	const params = await dag.readAAParams(oswapAaAddress);
 	const stateVars = await dag.readAAStateVars(oswapAaAddress);
