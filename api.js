@@ -780,8 +780,8 @@ async function start(){
 			name: 'Oswap',
 			description,
 			location: 'Worldwide',
-			logo: 'https://v2.oswap.io/img/logo.4fab4f31.svg',
-			website: 'https://v2.oswap.io',
+			logo: 'https://oswap.io/img/logo.4fab4f31.svg',
+			website: 'https://oswap.io',
 			twitter: 'ObyteOrg',
 			version: '1.0',
 			capability: {

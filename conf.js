@@ -6,7 +6,7 @@ exports.bLight = true;
 exports.bNoPassphrase = true;
 
 exports.apiPort = process.env.testnet ? 4201 : 4200;
-exports.swapURL = 'https://v2.oswap.io/#/swap/'
+exports.swapURL = 'https://oswap.io/#/swap/'
 
 exports.pathToDist = process.env.pathToDist || './dist/';
 
