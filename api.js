@@ -730,6 +730,41 @@ async function getEmulatedOrderBook(fullMarketName) {
 	return { bids, asks };
 }
 
+async function getCurrentAssetBalance(address, asset) {
+	const [row] = await db.query("SELECT balance FROM oswap_aa_balances WHERE address=? AND asset=? ORDER BY balance_date DESC LIMIT 1", [address, asset]);
+	return row ? row.balance : 0;
+}
+
+function getAssetUSDValue(asset, balance) {
+	const asset_id = asset === "base" ? "GBYTE" : asset;
+	const rate = getExchangeRates()[`${asset_id}_USD`];
+	const asset_info = assocAssets[asset];
+	return rate ? rate * assetValue(balance, asset_info) : 0;
+}
+
+async function getPoolTVL(address, x_asset, y_asset) {
+	if (!x_asset || !y_asset) {
+		const [row] = await db.query("SELECT x_asset, y_asset FROM oswap_aas WHERE address=?", [address]);
+		if (!row)
+			throw Error(`no such pool ${address}`);
+		x_asset = row.x_asset;
+		y_asset = row.y_asset;
+	}
+	const x_balance = await getCurrentAssetBalance(address, x_asset);
+	const y_balance = await getCurrentAssetBalance(address, y_asset);
+	const x_value = getAssetUSDValue(x_asset, x_balance);
+	const y_value = getAssetUSDValue(y_asset, y_balance);
+	return x_value + y_value;
+}
+
+async function getTotalTVL() {
+	let tvl = 0;
+	const rows = await db.query("SELECT address, x_asset, y_asset FROM oswap_aas");
+	for (const { address, x_asset, y_asset } of rows) {
+		tvl += await getPoolTVL(address, x_asset, y_asset);
+	}
+}
+
 const pathToIndex = path.join(__dirname, conf.pathToDist, 'index.html');
 if (!existsSync(pathToIndex)) {
 	throw Error('index.html not found');
@@ -960,6 +995,10 @@ async function start(){
 		const history = await getPoolHistory(address, type);
 
 		response.send(history);
+	});
+
+	app.get('/api/v1/total_tvl', async function (request, response) {
+		response.send(await getTotalTVL());
 	});
 
 	server.listen(conf.apiPort, () => {
