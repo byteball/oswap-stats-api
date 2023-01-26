@@ -214,7 +214,7 @@ async function refreshTrades(address, base, quote){
 	
 	const trades = assocTradesByAssets[getKeyName(address, base, quote)];
 
-	trades.length = 0; // we clear array without deferencing it
+	trades.length = 0; // we clear array without dereferencing it
 
 	var rows = await db.query("SELECT quote_qty*1.0/base_qty AS price,base_qty AS base_volume,quote_qty AS quote_volume,timestamp,response_unit,indice,type FROM trades \n\
 	WHERE timestamp > ? AND quote=? AND base=? AND aa_address=? ORDER BY timestamp DESC", [getOneDayAgoDate(), quote, base, address]);

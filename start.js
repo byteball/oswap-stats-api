@@ -313,7 +313,8 @@ function addWatchedAas() {
 }
 
 
-async function start(){
+async function start() {
+	await headlessWallet.waitTillReady();
 	await sqlite_tables.create();
 	await discoverOswapAas()
 	await api.initAssetsCache();
