@@ -4,6 +4,7 @@ exports.bServeAsHub = false;
 exports.bLight = true;
 
 exports.bNoPassphrase = true;
+exports.explicitStart = true;
 
 exports.apiPort = process.env.testnet ? 4201 : 4200;
 exports.swapURL = 'https://oswap.io/#/swap/'

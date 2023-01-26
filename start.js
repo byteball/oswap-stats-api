@@ -24,6 +24,9 @@ eventBus.once('connected', function(ws){
 const bounce_fees = 10000;
 let apiIsStarted = false;
 
+startNetwork();
+
+
 async function treatResponseFromOswapAA(objResponse, objInfos){
 
 	const oswapAaAddress = objInfos.address;
@@ -313,8 +316,12 @@ function addWatchedAas() {
 }
 
 
-async function start() {
+async function startNetwork() {
 	await headlessWallet.waitTillReady();
+	network.start();
+}
+
+async function start() {
 	await sqlite_tables.create();
 	await discoverOswapAas()
 	await api.initAssetsCache();
