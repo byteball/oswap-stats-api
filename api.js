@@ -1064,3 +1064,4 @@ exports.refreshMarket = refreshMarket;
 exports.initMarkets = initMarkets;
 exports.getSymbol = getSymbol;
 exports.initAssetsCache = initAssetsCache;
+exports.getTotalTVL = getTotalTVL;

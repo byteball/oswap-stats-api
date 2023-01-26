@@ -9,6 +9,8 @@ const sqlite_tables = require('./sqlite_tables.js');
 const db = require('ocore/db.js');
 const api = require('./api.js');
 const dag = require('aabot/dag.js');
+const operator = require('aabot/operator.js');
+const headlessWallet = require('headless-obyte');
 const initHistoryAABalances = require('./initHistoryAABalances');
 const { dumpByAddress } = require('./dumpFunctions');
 const formatDate = require('./helpers/formatDate');
@@ -322,6 +324,10 @@ async function start(){
 		apiIsStarted = true;
 		await initHistoryAABalances();
 		await api.start()
+		if (conf.runOracle) {
+			await operator.start();
+			await postTVL();
+		}
 	});
 	initBalanceDumpService()
 }
@@ -512,6 +518,28 @@ function getStateVarsForPrefix(aa_address, prefix, start = '0', end = 'z', first
 }
 
 
+async function postTVL() {
+	try {
+		const tvl = await api.getTotalTVL();
+		const oracleAddress = operator.getAddress();
+		const message = {
+			app: "data_feed",
+			payload: { TVL: tvl },
+		};
+		const opts = {
+			paying_addresses: [oracleAddress],
+			change_address: oracleAddress,
+			messages: [message]
+		};
+		let { unit } = await headlessWallet.sendMultiPayment(opts);
+		console.log("posted data feed in unit " + unit);
+	}
+	catch (e) {
+		console.log("posting failed", e);
+	}
+	const interval = Math.round(Math.random() * 24 * 3600 * 1000); // make next posting time unpredictable
+	setTimeout(postTVL, interval);
+}
 
 
 process.on('unhandledRejection', up => { throw up });
