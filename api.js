@@ -754,7 +754,9 @@ async function getPoolTVL(address, x_asset, y_asset) {
 	const y_balance = await getCurrentAssetBalance(address, y_asset);
 	const x_value = getAssetUSDValue(x_asset, x_balance);
 	const y_value = getAssetUSDValue(y_asset, y_balance);
-	return x_value + y_value;
+	const total = x_value + y_value;
+	console.log('TVL', address, { x_value, y_value, total });
+	return total;
 }
 
 async function getTotalTVL() {
@@ -763,6 +765,7 @@ async function getTotalTVL() {
 	for (const { address, x_asset, y_asset } of rows) {
 		tvl += await getPoolTVL(address, x_asset, y_asset);
 	}
+	return tvl;
 }
 
 const pathToIndex = path.join(__dirname, conf.pathToDist, 'index.html');
