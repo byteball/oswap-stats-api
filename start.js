@@ -532,7 +532,7 @@ async function postTVL() {
 		const oracleAddress = operator.getAddress();
 		const message = {
 			app: "data_feed",
-			payload: { TVL: tvl },
+			payload: { TVL: tvl.toFixed(2) },
 		};
 		const opts = {
 			paying_addresses: [oracleAddress],
