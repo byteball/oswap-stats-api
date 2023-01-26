@@ -537,7 +537,8 @@ async function postTVL() {
 		const opts = {
 			paying_addresses: [oracleAddress],
 			change_address: oracleAddress,
-			messages: [message]
+			messages: [message],
+			spend_unconfirmed: 'all',
 		};
 		let { unit } = await headlessWallet.sendMultiPayment(opts);
 		console.log("posted data feed in unit " + unit);
