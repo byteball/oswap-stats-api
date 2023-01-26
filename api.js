@@ -1001,7 +1001,7 @@ async function start(){
 	});
 
 	app.get('/api/v1/total_tvl', async function (request, response) {
-		response.send(await getTotalTVL());
+		response.send('' + await getTotalTVL());
 	});
 
 	server.listen(conf.apiPort, () => {
