@@ -1054,7 +1054,6 @@ function parseDateTime(string, bEndDate){
 		date = new Date(Date.parse(string));
 	else if (string.match(/^\d+$/)){
 		date = new Date(parseInt(string));
-		if(!isValidDate(date)) return null;
 	} else {
 		return null;
 	}
