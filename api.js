@@ -1004,6 +1004,33 @@ async function start(){
 		response.send('' + await getTotalTVL());
 	});
 
+	app.get('/api/v1/yield',  async function (request, response) {
+		await waitUntilRefreshFinished();
+		const tickers = Object.values(assocTickersByMarketNames);
+		const data = [];
+
+		const endTime = new Date();
+		endTime.setUTCHours(0, 0, 0, 0);
+
+		for (let { address, base_id, quote_id, full_market_name, base_symbol, quote_symbol } of tickers) {
+			const tvlUsd = await getPoolTVL(address, base_id, quote_id);
+			const balances = await getAverageBalances(address, endTime, 7);
+			const apyBase = await getAPY7d(endTime, base_id, quote_id, address, balances).then(({ apy }) => apy);
+
+			if (base_symbol && quote_symbol) {
+				data.push({
+					address,
+					tvlUsd,
+					apyBase,
+					pool: full_market_name,
+					symbol: `${base_symbol}-${quote_symbol}`
+				})
+			}
+		}
+
+		response.send(data);
+	})
+
 	server.listen(conf.apiPort, () => {
 		console.log(`== server started listening on ${conf.webServerPort} port`);
 	});
@@ -1016,6 +1043,7 @@ function parseDateTime(string, bEndDate){
 	var date = null;
 	if (string.match(/^\d\d\d\d-\d\d-\d\d$/)){
 		date = new Date(Date.parse(string));
+		if(!isValidDate(date)) return null;
 		if (bEndDate)
 			date.setDate(date.getUTCDate() + 1); // make end day inclusive
 		return date;
@@ -1024,10 +1052,14 @@ function parseDateTime(string, bEndDate){
 		date = new Date(Date.parse(string));
 	else if (string.match(/^\d\d\d\d-\d\d-\d\d( |T)\d\d:\d\d:\d\d.\d\d\dZ$/))
 		date = new Date(Date.parse(string));
-	else if (string.match(/^\d+$/))
-		date = new Date(parseInt(string) / 1000);
-	else
+	else if (string.match(/^\d+$/)){
+		date = new Date(parseInt(string));
+	} else {
 		return null;
+	}
+
+	if(!isValidDate(date)) return null;
+
 	if (bEndDate)
 		date.setUTCHours(date.getUTCHours() + 1); // make end hour inclusive
 	return date;
@@ -1058,6 +1090,9 @@ function getLandingPage(){
 	return html;
 }
 
+function isValidDate(d) {
+	return d instanceof Date && !isNaN(d);
+}
 
 exports.start = start;
 exports.refreshMarket = refreshMarket;
