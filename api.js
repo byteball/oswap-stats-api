@@ -1017,13 +1017,15 @@ async function start(){
 			const balances = await getAverageBalances(address, endTime, 7);
 			const apyBase = await getAPY7d(endTime, base_id, quote_id, address, balances).then(({ apy }) => apy);
 
-			data.push({
-				address,
-				tvlUsd,
-				apyBase,
-				pool: full_market_name,
-				symbol: `${base_symbol}-${quote_symbol}`.toLowerCase()
-			})
+			if (base_symbol && quote_symbol) {
+				data.push({
+					address,
+					tvlUsd,
+					apyBase,
+					pool: full_market_name,
+					symbol: `${base_symbol}-${quote_symbol}`.toLowerCase()
+				})
+			}
 		}
 
 		response.send(data);
