@@ -1023,7 +1023,7 @@ async function start(){
 					tvlUsd,
 					apyBase,
 					pool: full_market_name,
-					symbol: `${base_symbol}-${quote_symbol}`.toLowerCase()
+					symbol: `${base_symbol}-${quote_symbol}`
 				})
 			}
 		}
