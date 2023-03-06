@@ -544,14 +544,14 @@ async function getAPY(endTime, base_id, quote_id, address, balances, days = 7) {
 	const totals = await getTotals('daily', startTime, endTime, address);
 	const marketCap = getMarketcap(balances, base_id, quote_id);
 
-	let earnings7d = { total: 0, swap_fee: 0, arb_profit_tax: 0, l_tax: 0, exit_fee: 0, interest: 0 };
+	let earnings = { total: 0, swap_fee: 0, arb_profit_tax: 0, l_tax: 0, exit_fee: 0, interest: 0 };
 
 	let base_label = base_id === 'base' ? 'GBYTE' : base_id;
 	let quote_label = quote_id === 'base' ? 'GBYTE' : quote_id;
 	let base_rate = getExchangeRates()[`${base_label}_USD`];
 	let quote_rate = getExchangeRates()[`${quote_label}_USD`];
 	if (!totals.quote_volume && (!base_rate || !quote_rate))
-		return { apy: 0, earnings7d };
+		return { apy: 0, earnings };
 	if (!base_rate)
 		throw Error(`no rate for ` + base_id);
 	if (!quote_rate)
@@ -574,17 +574,17 @@ async function getAPY(endTime, base_id, quote_id, address, balances, days = 7) {
 		}
 		else
 			throw Error(`unrecognized var name ` + var_name);
-		if (typeof earnings7d[type] !== 'number')
+		if (typeof earnings[type] !== 'number')
 			throw Error(`unknown fee type: ${type}`);
-		earnings7d.total += earned;
-		earnings7d[type] += earned;
+		earnings.total += earned;
+		earnings[type] += earned;
 	}
-	const total_fee_rate = earnings7d.total / volume;
+	const total_fee_rate = earnings.total / volume;
 
-	const apy = (1 + earnings7d.total / marketCap) ** (365 / days) - 1;
+	const apy = (1 + earnings.total / marketCap) ** (365 / days) - 1;
 	console.error(`APY ${address}: ${apy}, MC ${marketCap}`, totals, balances)
 	
-	return { apy: +(apy * 100).toFixed(2), earnings7d };
+	return { apy: +(apy * 100).toFixed(2), earnings };
 }
 
 async function getAverageBalances(address, endTime, days) {
@@ -975,14 +975,16 @@ async function start(){
 		const assocAPYByMarketName = {};
 		const rows = await db.query('SELECT address, x_asset, y_asset FROM oswap_aas');
 
-		for (let { address, x_asset, y_asset } of rows) {		
+		for (let { address, x_asset, y_asset } of rows) {
 			const balances = await getAverageBalances(address, endTime, 7);
-			assocAPYByMarketName[address] = await getAPY(
+			const { apy, earnings } = await getAPY(
 				endTime,
 				x_asset,
 				y_asset,
 				address,
 				balances);
+		
+			assocAPYByMarketName[address] = { apy, earnings7d: earnings };
 		}
 		response.send(assocAPYByMarketName);
 	});
