@@ -537,9 +537,9 @@ function getMarketcap(balances, x_asset, y_asset) {
 	return x_asset_value && y_asset_value ? x_asset_value + y_asset_value : 0;
 }
 
-async function getAPY7d(endTime, base_id, quote_id, address, balances) {
+async function getAPY(endTime, base_id, quote_id, address, balances, days = 7) {
 	const startTime = new Date(endTime);
-	startTime.setUTCDate(startTime.getUTCDate() - 7);
+	startTime.setUTCDate(startTime.getUTCDate() - days);
 
 	const totals = await getTotals('daily', startTime, endTime, address);
 	const marketCap = getMarketcap(balances, base_id, quote_id);
@@ -581,7 +581,7 @@ async function getAPY7d(endTime, base_id, quote_id, address, balances) {
 	}
 	const total_fee_rate = earnings7d.total / volume;
 
-	const apy = (1 + earnings7d.total / marketCap) ** (365 / 7) - 1;
+	const apy = (1 + earnings7d.total / marketCap) ** (365 / days) - 1;
 	console.error(`APY ${address}: ${apy}, MC ${marketCap}`, totals, balances)
 	
 	return { apy: +(apy * 100).toFixed(2), earnings7d };
@@ -977,7 +977,7 @@ async function start(){
 
 		for (let { address, x_asset, y_asset } of rows) {		
 			const balances = await getAverageBalances(address, endTime, 7);
-			assocAPYByMarketName[address] = await getAPY7d(
+			assocAPYByMarketName[address] = await getAPY(
 				endTime,
 				x_asset,
 				y_asset,
@@ -1014,8 +1014,8 @@ async function start(){
 
 		for (let { address, base_id, quote_id, full_market_name, base_symbol, quote_symbol } of tickers) {
 			const tvlUsd = await getPoolTVL(address, base_id, quote_id);
-			const balances = await getAverageBalances(address, endTime, 7);
-			const apyBase = await getAPY7d(endTime, base_id, quote_id, address, balances).then(({ apy }) => apy);
+			const balances = await getAverageBalances(address, endTime, 1);
+			const apyBase = await getAPY(endTime, base_id, quote_id, address, balances, 1).then(({ apy }) => apy);
 
 			if (base_symbol && quote_symbol) {
 				data.push({
