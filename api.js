@@ -1006,15 +1006,22 @@ async function start(){
 		response.send('' + await getTotalTVL());
 	});
 
-	app.get('/api/v1/yield',  async function (request, response) {
+	app.get('/api/v1/yield', async function (request, response) {
 		await waitUntilRefreshFinished();
-		const tickers = Object.values(assocTickersByMarketNames);
+
+		let pools = await db.query('SELECT address, x_asset AS base_id, y_asset AS quote_id FROM oswap_aas');
 		const data = [];
+
+		pools.forEach((pool) => {
+			pool.quote_symbol = assocAssets[pool.quote_id]?.symbol;
+			pool.base_symbol = assocAssets[pool.base_id]?.symbol;
+			pool.full_market_name = getFullMarketName(pool.address, pool.base_symbol, pool.quote_symbol);
+		})
 
 		const endTime = new Date();
 		endTime.setUTCHours(0, 0, 0, 0);
 
-		for (let { address, base_id, quote_id, full_market_name, base_symbol, quote_symbol } of tickers) {
+		for (let { address, base_id, quote_id, full_market_name, base_symbol, quote_symbol } of pools) {
 			const tvlUsd = await getPoolTVL(address, base_id, quote_id);
 			const balances = await getAverageBalances(address, endTime, 1);
 			const apyBase = await getAPY(endTime, base_id, quote_id, address, balances, 1).then(({ apy }) => apy);
