@@ -599,7 +599,7 @@ async function getAverageBalances(address, endTime, days) {
 
 async function getPoolHistory(address, type) {
 	let and_type;
-	if (!type)
+	if (!type || type === 'all')
 		and_type = '';
 	else if (type === 'swap')
 		and_type = "AND type IN('buy', 'sell')";
@@ -996,6 +996,9 @@ async function start(){
 	app.get('/api/v1/history/:address', async function (request, response) {
 		const address = request.params.address;
 		const type = request.query.type;
+
+		if (type && !['all', 'swap', 'leverage', 'liquidity'].includes(type))
+			response.status(400).send('Unknown type ' + type);
 
 		const history = await getPoolHistory(address, type);
 
