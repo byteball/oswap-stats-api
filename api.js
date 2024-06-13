@@ -772,12 +772,26 @@ const pathToIndex = path.join(__dirname, conf.pathToDist, 'index.html');
 if (!existsSync(pathToIndex)) {
 	throw Error('index.html not found');
 }
-let indexFile = readFileSync(pathToIndex).toString();
+let indexFile;
+function readIndexFile() {
+	indexFile = readFileSync(pathToIndex).toString();
+}
+function readIndexFileWithRetries() {
+	try {
+		readIndexFile();
+	}
+	catch (e) {
+		console.error('readIndexFile failed', e);
+		setTimeout(readIndexFile, 5000);
+	}
+}
+readIndexFile();
+
 const desc = "Oswap pool statistics";
 
-watchFile(pathToIndex, async () => {
+watchFile(pathToIndex, () => {
 	console.error('index.html changed');
-	indexFile = (await readFile(pathToIndex)).toString();
+	readIndexFileWithRetries();
 });
 
 let started = false;
