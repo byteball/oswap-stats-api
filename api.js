@@ -776,13 +776,15 @@ let indexFile;
 function readIndexFile() {
 	indexFile = readFileSync(pathToIndex).toString();
 }
-function readIndexFileWithRetries() {
+function readIndexFileWithRetries(count = 0) {
 	try {
 		readIndexFile();
 	}
 	catch (e) {
 		console.error('readIndexFile failed', e);
-		setTimeout(readIndexFile, 5000);
+		if (count > 10)
+			throw Error(`too many retries to read the index file`);
+		setTimeout(readIndexFileWithRetries, 5000, count + 1);
 	}
 }
 readIndexFile();
