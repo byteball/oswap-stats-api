@@ -423,7 +423,7 @@ async function getPoolHistory(address) {
 }
 
 async function getTheMostLiquidAddress(marketName) {
-	if (assocIdsByMarketNames[marketName]) {
+	if (Object.hasOwn(assocIdsByMarketNames, marketName)) {
 		const {base_id, quote_id} = assocIdsByMarketNames[marketName];
 		let bestAddressData = {address: false, balance: 0}
 		const rows = await db.query("SELECT address FROM oswap_aas WHERE asset_0=? AND asset_1=?", [quote_id, base_id]);
@@ -449,7 +449,7 @@ async function getTheMostLiquidAddress(marketName) {
 }
 
 async function sendTickerByFullMarketName(fullMarketName, response) {
-	if (fullMarketName && assocTickersByMarketNames[fullMarketName]){
+	if (fullMarketName && Object.hasOwn(assocTickersByMarketNames, fullMarketName)){
 		await waitUntilRefreshFinished();
 		return response.send(assocTickersByMarketNames[fullMarketName]);
 	}
@@ -458,7 +458,7 @@ async function sendTickerByFullMarketName(fullMarketName, response) {
 }
 
 async function sendTradesByFullMarketName(fullMarketName, response) {
-	if (fullMarketName && assocTradesByMarketNames[fullMarketName]){
+	if (fullMarketName && Object.hasOwn(assocTradesByMarketNames, fullMarketName)){
 		await waitUntilRefreshFinished();
 		return response.send(assocTradesByMarketNames[fullMarketName]);
 	}
@@ -474,7 +474,7 @@ async function sendCandlesByFullMarketName(fullMarketName, period, start_time, e
 
 	if (period !== 'hourly' && period !== 'daily')
 		return response.status(400).send('period must be "daily" or "hourly"');
-	if (assocTickersByMarketNames[fullMarketName]){
+	if (Object.hasOwn(assocTickersByMarketNames, fullMarketName)){
 		await waitUntilRefreshFinished();
 
 		const ticker = assocTickersByMarketNames[fullMarketName];
@@ -576,6 +576,12 @@ async function start(){
 			return response.status(400).send('start_time not valid');
 		if (!end_time)
 			return response.status(400).send('end_time not valid');
+		if (start_time > end_time)
+			return response.status(400).send('start must not be after end');
+
+		const [pool] = await db.query("SELECT 1 FROM oswap_aas WHERE address=?", [address]);
+		if (!pool)
+			return response.status(400).send('Unknown pool');
 
 		response.send(await calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time));
 	});
@@ -633,8 +639,10 @@ function parseDateTime(string, bEndDate){
 	var date = null;
 	if (string.match(/^\d\d\d\d-\d\d-\d\d$/)){
 		date = new Date(Date.parse(string));
+		if (!isValidDate(date))
+			return null;
 		if (bEndDate)
-			date.setDate(date.getUTCDate() + 1); // make end day inclusive
+			date.setUTCDate(date.getUTCDate() + 1); // make end day inclusive
 		return date;
 	}
 	else if (string.match(/^\d\d\d\d-\d\d-\d\d( |T)\d\d:\d\d:\d\dZ$/))
@@ -645,11 +653,21 @@ function parseDateTime(string, bEndDate){
 		date = new Date(parseInt(string) / 1000);
 	else
 		return null;
+	if (!isValidDate(date))
+		return null;
 	if (bEndDate)
 		date.setUTCHours(date.getUTCHours() + 1); // make end hour inclusive
 	return date;
 }
 
+
+function isValidDate(d) {
+	return d instanceof Date && !isNaN(d);
+}
+
+function escapeHtml(str) {
+	return String(str).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
 
 function waitUntilRefreshFinished(){
 	return new Promise(function(resolve){
@@ -668,9 +686,9 @@ function getLandingPage(){
 	html +='<li><a href="/api/v1/summary">summary</a></li>';
 	html +='<li><a href="/api/v1/tickers">tickers</a></li>';
 	for (var key in assocTickersByMarketNames)
-		html +='<li><a href="/api/v1/ticker/'+ key + '">ticker ' + key + ' </a></li>';
+		html +='<li><a href="/api/v1/ticker/'+ encodeURIComponent(key) + '">ticker ' + escapeHtml(key) + ' </a></li>';
 	for (var key in assocTickersByMarketNames)
-		html +='<li><a href="/api/v1/trades/'+ key + '">trades ' + key + ' </a></li>';
+		html +='<li><a href="/api/v1/trades/'+ encodeURIComponent(key) + '">trades ' + escapeHtml(key) + ' </a></li>';
 	html += '</ul></html>';
 	return html;
 }
