@@ -821,7 +821,7 @@ async function start(){
 		
 		let title = `Pool ${name} statistics, transactions and rates | ` +  desc;
 		
-		const html = indexFile.replace(/\{og_text\}/g, title);
+		const html = indexFile.replace(/\{og_text\}/g, () => _.escape(title));
 		res.send(html);
 	});
 	
@@ -925,6 +925,8 @@ async function start(){
 		const fullMarketName = request.query.market;
 		let since = null;
 		if (request.query.since) {
+			if (typeof request.query.since !== 'string')
+				return response.status(400).send('since must be a string');
 			since = request.query.since.replace(/\s/g, '+');
 		}
 		const trades = await getTradesByFullMarketNameAfterResponseUnit(fullMarketName, since);
@@ -980,6 +982,12 @@ async function start(){
 			return response.status(400).send('start_time not valid');
 		if (!end_time)
 			return response.status(400).send('end_time not valid');
+		if (start_time > end_time)
+			return response.status(400).send('start must not be after end');
+
+		const [pool] = await db.query("SELECT 1 FROM oswap_aas WHERE address=?", [address]);
+		if (!pool)
+			return response.status(400).send('Unknown pool');
 
 		response.send(await calcBalancesOfAddressWithSlicesByDate(address, start_time, end_time));
 	});
@@ -1014,7 +1022,7 @@ async function start(){
 		const type = request.query.type;
 
 		if (type && !['all', 'swap', 'leverage', 'liquidity'].includes(type))
-			response.status(400).send('Unknown type ' + type);
+			return response.status(400).send('Unknown type');
 
 		const history = await getPoolHistory(address, type);
 
@@ -1073,7 +1081,7 @@ function parseDateTime(string, bEndDate){
 		date = new Date(Date.parse(string));
 		if(!isValidDate(date)) return null;
 		if (bEndDate)
-			date.setDate(date.getUTCDate() + 1); // make end day inclusive
+			date.setUTCDate(date.getUTCDate() + 1); // make end day inclusive
 		return date;
 	}
 	else if (string.match(/^\d\d\d\d-\d\d-\d\d( |T)\d\d:\d\d:\d\dZ$/))
@@ -1111,9 +1119,9 @@ function getLandingPage(){
 	html +='<li><a href="/api/v1/summary">summary</a></li>';
 	html +='<li><a href="/api/v1/tickers">tickers</a></li>';
 	for (var key in assocTickersByMarketNames)
-		html +='<li><a href="/api/v1/ticker_by_full_market_name/'+ key + '">ticker ' + key + ' </a></li>';
+		html +='<li><a href="/api/v1/ticker_by_full_market_name/'+ encodeURIComponent(key) + '">ticker ' + _.escape(key) + ' </a></li>';
 	for (var key in assocTickersByMarketNames)
-		html +='<li><a href="/api/v1/trades_by_full_market_name/'+ key + '">trades ' + key + ' </a></li>';
+		html +='<li><a href="/api/v1/trades_by_full_market_name/'+ encodeURIComponent(key) + '">trades ' + _.escape(key) + ' </a></li>';
 	html += '</ul></html>';
 	return html;
 }
