@@ -237,7 +237,7 @@ async function refreshTrades(address, base, quote){
 
 async function getTradesByFullMarketNameAfterResponseUnit(fullMarketName, responseUnit) {
 	const ticker = assocTickersByMarketNames[fullMarketName];
-	if (!ticker) {
+	if (!Object.hasOwn(assocTickersByMarketNames, fullMarketName)) {
 		return null;
 	}
 	const trades = [];
@@ -613,7 +613,7 @@ async function getPoolHistory(address, type) {
 }
 
 async function getTheMostLiquidAddress(marketName) {
-	if (assocIdsByMarketNames[marketName]) {
+	if (Object.hasOwn(assocIdsByMarketNames, marketName)) {
 		const {base_id, quote_id} = assocIdsByMarketNames[marketName];
 		let bestAddressData = {address: false, balance: 0}
 		const rows = await db.query("SELECT address FROM oswap_aas WHERE x_asset=? AND y_asset=?", [base_id, quote_id]);
@@ -639,7 +639,7 @@ async function getTheMostLiquidAddress(marketName) {
 }
 
 async function sendTickerByFullMarketName(fullMarketName, response) {
-	if (fullMarketName && assocTickersByMarketNames[fullMarketName]){
+	if (fullMarketName && Object.hasOwn(assocTickersByMarketNames, fullMarketName)){
 		await waitUntilRefreshFinished();
 		return response.send(assocTickersByMarketNames[fullMarketName]);
 	}
@@ -648,7 +648,7 @@ async function sendTickerByFullMarketName(fullMarketName, response) {
 }
 
 async function getTradesByFullMarketName(fullMarketName) {
-	if (fullMarketName && assocTradesByMarketNames[fullMarketName]){
+	if (fullMarketName && Object.hasOwn(assocTradesByMarketNames, fullMarketName)){
 		await waitUntilRefreshFinished();
 		return assocTradesByMarketNames[fullMarketName]
 	}
@@ -664,7 +664,7 @@ async function sendCandlesByFullMarketName(fullMarketName, period, start_time, e
 
 	if (period !== 'hourly' && period !== 'daily')
 		return response.status(400).send('period must be "daily" or "hourly"');
-	if (assocTickersByMarketNames[fullMarketName]){
+	if (Object.hasOwn(assocTickersByMarketNames, fullMarketName)){
 		await waitUntilRefreshFinished();
 
 		const ticker = assocTickersByMarketNames[fullMarketName];
@@ -815,7 +815,7 @@ async function start(){
 	
 	app.get('/pool/:address', (req, res) => {
 		let name = req.params.address;
-		if (assocMarketNameByAddress[name]) {
+		if (Object.hasOwn(assocMarketNameByAddress, name)) {
 			name = assocMarketNameByAddress[name];
 		}
 		
