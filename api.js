@@ -252,7 +252,7 @@ async function getTradesByFullMarketNameAfterResponseUnit(fullMarketName, respon
 	}
 	
 	const rows = await db.query('SELECT rowid, quote_qty*1.0/base_qty AS price,base_qty AS base_volume,quote_qty AS quote_volume,timestamp,response_unit,indice,type FROM trades ' +
-		'WHERE rowid > ?' +
+		'WHERE rowid > ? ' +
 		'AND quote=? AND base=? AND aa_address=? ' +
 		'ORDER BY rowid ASC LIMIT 100', 
 		[rowid, ticker.quote_id, ticker.base_id, ticker.address]);
@@ -923,6 +923,8 @@ async function start(){
 	
 	app.get('/api/v1/trades', async function(request, response){
 		const fullMarketName = request.query.market;
+		if (typeof fullMarketName !== 'string')
+			return response.status(400).send('market must be a string');
 		let since = null;
 		if (request.query.since) {
 			if (typeof request.query.since !== 'string')
@@ -959,6 +961,10 @@ async function start(){
 
 	app.get('/api/v1/orders/snapshot', async function (request, response) {
 		const fullMarketName = request.query.market;
+		if (typeof fullMarketName !== 'string')
+			return response.status(400).send('market must be a string');
+		if (!Object.hasOwn(assocTickersByMarketNames, fullMarketName))
+			return response.status(400).send('Unknown market');
 		try {
 			var { bids, asks } = await getEmulatedOrderBook(fullMarketName);
 		}
